@@ -37,7 +37,7 @@ import org.eclipse.swt.widgets.Shell;
 
 public class FaceSelector {
 
-	private final static String PATH = "../Camera analysis/";
+	private final static String PATH = "../Subjects/";
 
 	private static LinkedList<File> files = new LinkedList<File>();
 	private static HashMap<String, String> curData = new HashMap<String, String>();
@@ -129,8 +129,6 @@ public class FaceSelector {
 			}
 		});
 
-		System.out.print("Collecting files... ");
-
 		final int result = showMessage(SWT.YES | SWT.NO | SWT.ICON_QUESTION,
 				"Would you like to display only unannotated files?");
 		if (result == SWT.YES) {
@@ -138,11 +136,17 @@ public class FaceSelector {
 		}
 
 		final File path = new File(PATH);
+		if (onlyIncomplete) {
+			System.out.println("Collecting incompletely annotated files...");
+		} else {
+			System.out.print("Collecting files... ");
+		}
 		listFiles(path);
 		if (files.size() == 0) {
 			fatal("No images found in path:\n\t" + PATH);
+		} else {
+			System.out.println("OK (" + FaceSelector.files.size() + ")");
 		}
-		System.out.println("OK (" + files.size() + ")");
 
 		shell.setLayout(new FormLayout());
 		shell.setText(FaceSelector.class.getSimpleName());
@@ -635,5 +639,4 @@ public class FaceSelector {
 			}
 		}
 	}
-
 }
