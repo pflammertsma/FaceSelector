@@ -19,7 +19,11 @@ import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.events.SelectionListener;
 import org.eclipse.swt.events.ShellEvent;
 import org.eclipse.swt.events.ShellListener;
+import org.eclipse.swt.graphics.Color;
+import org.eclipse.swt.graphics.Font;
+import org.eclipse.swt.graphics.GC;
 import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.layout.FormAttachment;
 import org.eclipse.swt.layout.FormData;
 import org.eclipse.swt.layout.FormLayout;
@@ -37,7 +41,23 @@ import org.eclipse.swt.widgets.Shell;
 
 public class FaceSelector {
 
+	private static final boolean DEBUG = false;
+
+	private static final Field FIELD_NOSE = new Field("Nose", "nose");
+	private static final Field FIELD_HEAD_B = new Field("Head bottom", "headB");
+	private static final Field FIELD_HEAD_T = new Field("Head top", "headT");
+	private static final Field FIELD_EYE_R = new Field("Eye right", "eyeR");
+	private static final Field FIELD_EYE_L = new Field("Eye left", "eyeL");
+	private static final Field FIELD_CROP_T = new Field("Crop top", "cropT");
+	private static final Field FIELD_CROP_R = new Field("Crop right", "cropR");
+	private static final Field FIELD_CROP_B = new Field("Crop bottom", "cropB");
+	private static final Field FIELD_CROP_L = new Field("Crop left", "cropL");
+
 	private final static String PATH = "../Subjects/";
+
+	protected static final double CIRCLE_SIZE = 5.0;
+
+	private static final int FONT_SIZE = (int) (CIRCLE_SIZE * 2);
 
 	private static LinkedList<File> files = new LinkedList<File>();
 	private static HashMap<String, String> curData = new HashMap<String, String>();
@@ -53,23 +73,26 @@ public class FaceSelector {
 	protected static double scale;
 
 	private static Button buttonT, buttonR, buttonB, buttonL;
-
 	private static Label[] label1;
-
 	private static ProgressLabel[] label2;
 
-	private static String[] fieldsToggle = new String[] { "cropT", "cropR",
-			"cropB", "cropL" };
-	private static String[] fieldsCoord = new String[] { "eyeL", "eyeR",
-			"headT", "headB", "nose" };
+	private static Field[] fieldsToggle = new Field[] { FIELD_CROP_T,
+			FIELD_CROP_R, FIELD_CROP_B, FIELD_CROP_L };
+	private static Field[] fieldsCoord = new Field[] { FIELD_HEAD_T,
+			FIELD_HEAD_B, FIELD_EYE_L, FIELD_EYE_R, FIELD_NOSE };
 
 	private static int currentLabel;
 
 	private static boolean onlyIncomplete;
+	protected static Color color;
+	protected static Font font;
 
 	public static void main(final String[] args) {
 		display = new Display();
 		shell = new Shell(display);
+
+		color = new Color(display, 0, 255, 0);
+		font = new Font(display, "Courier New", FONT_SIZE, SWT.NORMAL);
 
 		display.addFilter(SWT.KeyDown, new Listener() {
 			@Override
@@ -99,14 +122,20 @@ public class FaceSelector {
 								files.remove(curFile);
 								setFile(curFile);
 							} else {
-								showMessage(
-										SWT.ERROR,
+								showMessage(SWT.ERROR,
 										"Failed to rename the following file:\n\n    "
 												+ file);
 							}
 						}
 					} catch (final IOException e1) {
 						fatal(e1);
+					}
+					break;
+				case SWT.ESC:
+					final int result = showMessage(SWT.YES | SWT.NO
+							| SWT.ICON_QUESTION, "Revert data from file?");
+					if (result == SWT.YES) {
+						load();
 					}
 					break;
 				case 'w':
@@ -137,7 +166,12 @@ public class FaceSelector {
 
 		final File path = new File(PATH);
 		if (onlyIncomplete) {
-			System.out.println("Collecting incompletely annotated files...");
+			String msg = "Collecting incompletely annotated files... ";
+			if (DEBUG) {
+				System.out.println(msg);
+			} else {
+				System.out.print(msg);
+			}
 		} else {
 			System.out.print("Collecting files... ");
 		}
@@ -145,7 +179,7 @@ public class FaceSelector {
 		if (files.size() == 0) {
 			fatal("No images found in path:\n\t" + PATH);
 		} else {
-			System.out.println("OK (" + FaceSelector.files.size() + ")");
+			System.out.println(FaceSelector.files.size() + " file(s)");
 		}
 
 		shell.setLayout(new FormLayout());
@@ -183,20 +217,16 @@ public class FaceSelector {
 			rowLayout.pack = false;
 			group1.setLayout(rowLayout);
 			buttonT = new Button(group1, SWT.TOGGLE);
-			buttonT.setText("Top");
-			buttonT.setData("field", "cropT");
+			setButton(buttonT, FIELD_CROP_T);
 			buttonT.addSelectionListener(croppedListener);
 			buttonR = new Button(group1, SWT.TOGGLE);
-			buttonR.setText("Right");
-			buttonR.setData("field", "cropR");
+			setButton(buttonR, FIELD_CROP_R);
 			buttonR.addSelectionListener(croppedListener);
 			buttonB = new Button(group1, SWT.TOGGLE);
-			buttonB.setText("Bottom");
-			buttonB.setData("field", "cropB");
+			setButton(buttonB, FIELD_CROP_B);
 			buttonB.addSelectionListener(croppedListener);
 			buttonL = new Button(group1, SWT.TOGGLE);
-			buttonL.setText("Left");
-			buttonL.setData("field", "cropL");
+			setButton(buttonL, FIELD_CROP_L);
 			buttonL.addSelectionListener(croppedListener);
 		}
 
@@ -232,7 +262,7 @@ public class FaceSelector {
 					} else {
 						throw new RuntimeException("Source not specified");
 					}
-					updateCoords();
+					updateCoords(true);
 				}
 
 				@Override
@@ -241,23 +271,14 @@ public class FaceSelector {
 			};
 			label1 = new Label[fieldsCoord.length];
 			label2 = new ProgressLabel[fieldsCoord.length];
-			label1[0] = new Label(group2, SWT.NORMAL);
-			label1[0].setText("Left eye:");
-			label2[0] = new ProgressLabel(group2, true);
-			label1[1] = new Label(group2, SWT.NORMAL);
-			label1[1].setText("Right eye:");
-			label2[1] = new ProgressLabel(group2, true);
-			label1[2] = new Label(group2, SWT.NORMAL);
-			label1[2].setText("Head top:");
-			label2[2] = new ProgressLabel(group2, true);
-			label1[3] = new Label(group2, SWT.NORMAL);
-			label1[3].setText("Head bottom:");
-			label2[3] = new ProgressLabel(group2, true);
-			label1[4] = new Label(group2, SWT.NORMAL);
-			label1[4].setText("Nose:");
-			label2[4] = new ProgressLabel(group2, true);
-			for (int i = 0; i < label2.length; i++) {
+			int i = 0;
+			for (Field f : fieldsCoord) {
+				label1[i] = new Label(group2, SWT.NORMAL);
+				label1[i].setText(f.name());
+				label2[i] = new ProgressLabel(group2, true);
+				label2[i].setData("field", f.field());
 				label2[i].addMouseListener(labelClick, i);
+				i++;
 			}
 		}
 
@@ -311,7 +332,7 @@ public class FaceSelector {
 			});
 		}
 
-		imgBox = new Composite(shell, SWT.BORDER);
+		imgBox = new Composite(shell, SWT.BORDER | SWT.DOUBLE_BUFFERED);
 		{
 			final FormData fd = new FormData();
 			fd.top = new FormAttachment(0, 2);
@@ -361,7 +382,88 @@ public class FaceSelector {
 						scale = (((double) destWidth / (double) srcWidth) + ((double) destHeight / (double) srcHeight)) / 2;
 						e.gc.drawImage(curImg, 0, 0, srcWidth, srcHeight, 0, 0,
 								destWidth, destHeight);
+						e.gc.setForeground(color);
+						e.gc.setFont(font);
+						int radius = (int) (CIRCLE_SIZE / 2 * scale);
+						int size = (int) (CIRCLE_SIZE * scale);
+						Point eyeL = null;
+						Point eyeR = null;
+						Point headT = null;
+						Point headB = null;
+						Point nose = null;
+						for (final Entry<String, String> set : curData
+								.entrySet()) {
+							if (set.getKey().equals(FIELD_EYE_L.field())) {
+								eyeL = toPoint(set.getValue(), scale);
+							} else if (set.getKey().equals(FIELD_EYE_R.field())) {
+								eyeR = toPoint(set.getValue(), scale);
+							} else if (set.getKey()
+									.equals(FIELD_HEAD_T.field())) {
+								headT = toPoint(set.getValue(), scale);
+							} else if (set.getKey()
+									.equals(FIELD_HEAD_B.field())) {
+								headB = toPoint(set.getValue(), scale);
+							} else if (set.getKey().equals(FIELD_NOSE.field())) {
+								nose = toPoint(set.getValue(), scale);
+							}
+						}
+						if (eyeL != null) {
+							e.gc.drawOval(eyeL.x - radius, eyeL.y - radius,
+									size, size);
+							drawString("L", e.gc, radius, eyeL);
+						}
+						if (eyeR != null) {
+							e.gc.drawOval(eyeR.x - radius, eyeR.y - radius,
+									size, size);
+							drawString("R", e.gc, radius, eyeR);
+						}
+						if (eyeL != null && eyeR != null) {
+							e.gc.drawLine(eyeL.x + radius, eyeL.y, eyeR.x
+									- radius, eyeR.y);
+						}
+						if (headT != null) {
+							e.gc.drawRectangle(headT.x - radius, headT.y
+									- radius, size, size);
+							drawString("T", e.gc, radius, headT);
+						}
+						if (headB != null) {
+							e.gc.drawRectangle(headB.x - radius, headB.y
+									- radius, size, size);
+							drawString("B", e.gc, radius, headB);
+						}
+						if (headT != null && headB != null) {
+							e.gc.drawLine(headT.x, headT.y + radius, headB.x,
+									headB.y - radius);
+						}
+						if (nose != null) {
+							e.gc.drawRectangle(nose.x - radius,
+									nose.y - radius, size, size);
+							drawString("N", e.gc, radius, nose);
+						}
 					}
+				}
+
+				private void drawString(String string, final GC gc, int radius,
+						Point p) {
+					gc.drawString(string, p.x - radius / 2,
+							p.y - FONT_SIZE + 2, true);
+				}
+
+				private Point toPoint(String value) {
+					return toPoint(value, 1.0);
+				}
+
+				private Point toPoint(final String string, double scale) {
+					if (string == null) {
+						return null;
+					}
+					int pos = string.indexOf(',');
+					Point p = new Point(0, 0);
+					if (pos > 0) {
+						p.x = (int) (Integer.parseInt(string.substring(0, pos)) * scale);
+						p.y = (int) (Integer.parseInt(string.substring(pos + 1)) * scale);
+					}
+					return p;
 				}
 			});
 		}
@@ -401,11 +503,18 @@ public class FaceSelector {
 		display.dispose();
 	}
 
+	private static void setButton(Button button, Field field) {
+		button.setText(field.name());
+		button.setData("field", field.field());
+	}
+
 	private static void fatal(final Exception e) {
 		fatal(e.getMessage());
 	}
 
 	private static void fatal(final String message) {
+		RuntimeException e = new RuntimeException(message);
+		e.printStackTrace();
 		showMessage(SWT.ICON_ERROR, message);
 		System.exit(1);
 	}
@@ -440,7 +549,7 @@ public class FaceSelector {
 				throw new RuntimeException("Field is not a string: " + data);
 			}
 		}
-		updateCoords();
+		updateCoords(true);
 	}
 
 	private static void setData(final Button button) {
@@ -453,9 +562,16 @@ public class FaceSelector {
 			}
 			curData.put(key, value);
 		} else {
-			throw new RuntimeException(
-					"Button does not contain toggle data");
+			throw new RuntimeException("Button does not contain toggle data");
 		}
+	}
+
+	private static String getData(final Field field) {
+		String key = field.field();
+		if (curData.containsKey(key)) {
+			return curData.get(key);
+		}
+		return null;
 	}
 
 	private static void setFile(final int i) {
@@ -474,42 +590,48 @@ public class FaceSelector {
 		try {
 			final String path = files.get(curFile).getCanonicalPath();
 			curImg = new Image(display, path);
-			imgBox.redraw();
 			loadData(path);
-			for (final String field : fieldsToggle) {
-				final String value = curData.get(field);
+			for (final Field field : fieldsToggle) {
+				final String value = curData.get(field.field());
 				boolean selection = false;
 				if (value != null && value.equals("true")) {
 					selection = true;
 				}
 				Button button = null;
-				if (field.equals("cropT")) {
+				if (field.equals(FIELD_CROP_T)) {
 					button = buttonT;
-				} else if (field.equals("cropR")) {
+				} else if (field.equals(FIELD_CROP_R)) {
 					button = buttonR;
-				} else if (field.equals("cropB")) {
+				} else if (field.equals(FIELD_CROP_B)) {
 					button = buttonB;
-				} else if (field.equals("cropL")) {
+				} else if (field.equals(FIELD_CROP_L)) {
 					button = buttonL;
 				}
 				if (button != null) {
 					button.setSelection(selection);
 				}
 			}
-			int count = 0;
-			for (final String field : fieldsCoord) {
-				label2[count].setData("field", field);
-				count++;
-			}
+			imgBox.redraw();
 		} catch (final IOException e) {
 			throw new RuntimeException(e);
 		}
-		updateCoords();
+		updateCoords(false);
 	}
 
 	private static void loadData(final String path) {
-		curData.clear();
 		final File file = new File(path + ".txt");
+		loadData(file);
+	}
+
+	private static void loadData(File file) {
+		if (!file.getName().endsWith(".txt")) {
+			try {
+				file = new File(file.getCanonicalPath() + ".txt");
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+		}
+		curData.clear();
 		if (file.exists()) {
 			try {
 				final FileReader input = new FileReader(file);
@@ -540,12 +662,14 @@ public class FaceSelector {
 			} catch (final IOException e) {
 				e.printStackTrace();
 			}
-			System.out.println("Read " + curData.size()
-					+ " fields for image #" + (curFile + 1));
+			if (DEBUG) {
+				System.out.println("Read " + curData.size()
+						+ " fields for image #" + (curFile + 1));
+			}
 		}
 	}
 
-	private static void updateCoords() {
+	private static void updateCoords(boolean fromUI) {
 		currentLabel = -1;
 		int count = 0;
 		for (final ProgressLabel label : label2) {
@@ -554,11 +678,35 @@ public class FaceSelector {
 				final String field = (String) data;
 				if (curData.containsKey(field)) {
 					String value = curData.get(field);
+					boolean isNull = false;
 					if (value == null) {
 						value = "N/A";
+						isNull = true;
 						label2[count].setMode(ProgressLabel.MODE_SKIP);
 					} else {
 						label2[count].setMode(ProgressLabel.MODE_COMPLETE);
+					}
+					if (fromUI) {
+						Button button = null;
+						if (field.equals(FIELD_EYE_L.field())) {
+							if (getData(FIELD_HEAD_T) != null
+									&& getData(FIELD_HEAD_B) != null) {
+								button = buttonL;
+							}
+						} else if (field.equals(FIELD_EYE_R.field())) {
+							if (getData(FIELD_HEAD_T) != null
+									&& getData(FIELD_HEAD_B) != null) {
+								button = buttonR;
+							}
+						} else if (field.equals(FIELD_HEAD_T.field())) {
+							button = buttonT;
+						} else if (field.equals(FIELD_HEAD_B.field())) {
+							button = buttonB;
+						}
+						if (button != null) {
+							button.setSelection(isNull);
+							setData(button);
+						}
 					}
 					label2[count].setText("(" + value + ")");
 				} else {
@@ -575,6 +723,7 @@ public class FaceSelector {
 			}
 			count++;
 		}
+		imgBox.redraw();
 	}
 
 	private static void save() {
@@ -596,8 +745,10 @@ public class FaceSelector {
 							count++;
 						}
 						bufferedWriter.close();
-						System.out.println("Stored " + count
-								+ " fields for image #" + (curFile + 1));
+						if (DEBUG) {
+							System.out.println("Stored " + count
+									+ " fields for image #" + (curFile + 1));
+						}
 					} else {
 						throw new RuntimeException("Failed to save data:\n\t"
 								+ file);
@@ -609,11 +760,17 @@ public class FaceSelector {
 		}
 	}
 
-	private static void listFiles(final File path) {
-		if (!path.exists()) {
-			throw new RuntimeException("Path does not exist:\n\t" + path);
+	private static void listFiles(final File directory) {
+		if (!directory.exists()) {
+			String path;
+			try {
+				path = directory.getCanonicalPath();
+			} catch (IOException e) {
+				path = directory.getAbsolutePath();
+			}
+			fatal("Path does not exist:\n\n    " + path);
 		}
-		final File[] files = path.listFiles();
+		final File[] files = directory.listFiles();
 		for (final File file : files) {
 			if (file.isDirectory()) {
 				listFiles(file);
@@ -625,7 +782,8 @@ public class FaceSelector {
 						throw new RuntimeException(e);
 					}
 					boolean incomplete = false;
-					for (final String field : fieldsCoord) {
+					for (final Field f : fieldsCoord) {
+						String field = f.field();
 						if (!curData.containsKey(field)) {
 							incomplete = true;
 							break;
