@@ -54,6 +54,8 @@ public class FaceSelector {
 			new Style(Style.CIRCLE, "R"));
 	private static final Field FIELD_NOSE = new Field("Nose", "nose",
 			new Style(Style.BOX, "N"));
+	private static final Field FIELD_MOUTH = new Field("Mouth", "mouth",
+			new Style(Style.BOX, "M"));
 
 	private static final Field FIELD_CROP_T = new Field("Crop top", "cropT");
 	private static final Field FIELD_CROP_R = new Field("Crop right", "cropR");
@@ -93,7 +95,7 @@ public class FaceSelector {
 	private static Field[] fieldsToggle = new Field[] { FIELD_CROP_T,
 			FIELD_CROP_R, FIELD_CROP_B, FIELD_CROP_L };
 	private static Field[] fieldsCoord = new Field[] { FIELD_HEAD_T,
-			FIELD_HEAD_B, FIELD_EYE_L, FIELD_EYE_R, FIELD_NOSE };
+			FIELD_HEAD_B, FIELD_EYE_L, FIELD_EYE_R, FIELD_NOSE, FIELD_MOUTH };
 
 	private static int currentLabel;
 
