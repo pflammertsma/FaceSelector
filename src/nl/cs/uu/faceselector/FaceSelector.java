@@ -68,6 +68,8 @@ public class FaceSelector {
 		};
 
 	private static Statistic[] statistics = new Statistic[] {
+			new Statistic("Facial features", new Field[] { FIELD_EYE_L,
+					FIELD_EYE_R, FIELD_MOUTH }, null, false),
 			new Statistic("Haar", new Field[] { FIELD_HEAD_T, FIELD_HEAD_B,
 					FIELD_EYE_L, FIELD_EYE_R }, 10.0),
 			new Statistic("Android", new Field[] { FIELD_EYE_L, FIELD_EYE_R,
@@ -649,12 +651,17 @@ public class FaceSelector {
 			final Double angle = getRotation(true);
 			int k = 0;
 			for (final Statistic statistic : statistics) {
-				boolean valid = true;
+				boolean valid = false;
+				if (statistic.all()) {
+					valid = true;
+				}
 				j = 0;
 				for (final Field field : statistic.fields()) {
 					final String key = curData.get(field.field());
-					if (key == null) {
+					if (statistic.all() && key == null) {
 						valid = false;
+					} else if (!statistic.all() && key != null) {
+						valid = true;
 					}
 					j++;
 				}
