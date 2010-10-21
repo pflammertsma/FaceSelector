@@ -67,12 +67,21 @@ public class FaceSelector {
 			new Line(FIELD_HEAD_T, FIELD_HEAD_B),
 		};
 
+	private static Statistic[] statistics = new Statistic[] {
+			new Statistic("Haar", new Field[] { FIELD_HEAD_T, FIELD_HEAD_B,
+					FIELD_EYE_L, FIELD_EYE_R }, 10.0),
+			new Statistic("Android", new Field[] { FIELD_EYE_L, FIELD_EYE_R,
+					FIELD_MOUTH }, 10.0),
+			};
+
 	private final static String PATH = "../Subjects/";
 
 	protected static final double CIRCLE_SIZE = 5.0;
 	protected static final int FONT_SIZE = (int) (CIRCLE_SIZE * 2);
 
 	private static final Point EXPECTED_IMAGE_SIZE = new Point(176, 144);
+
+	private static final double RADIANS_TO_DEGREES = 180 / Math.PI;
 
 	private static LinkedList<File> files = new LinkedList<File>();
 	private static HashMap<String, String> curData = new HashMap<String, String>();
@@ -617,6 +626,8 @@ public class FaceSelector {
 
 	protected static void showStatistics() {
 		final int cropped[] = new int[fieldsCoord.length];
+		final int rotation[] = new int[181];
+		final int stats[] = new int[statistics.length];
 		int count = 0;
 		int i = 0;
 		for (final File file : files) {
@@ -635,6 +646,32 @@ public class FaceSelector {
 				}
 				j++;
 			}
+			final Double angle = getRotation(true);
+			int k = 0;
+			for (final Statistic statistic : statistics) {
+				boolean valid = true;
+				j = 0;
+				for (final Field field : statistic.fields()) {
+					final String key = curData.get(field.field());
+					if (key == null) {
+						valid = false;
+					}
+					j++;
+				}
+				if (statistic.maxAngle() != null) {
+					if (angle == null || angle > statistic.maxAngle()) {
+						valid = false;
+					}
+				}
+				if (valid) {
+					stats[k]++;
+				}
+				k++;
+			}
+			if (angle != null) {
+				final int rot = (int) Math.round(angle);
+				rotation[rot]++;
+			}
 			i++;
 		}
 		String msg = "Annotated: " + count + " of " + files.size();
@@ -644,8 +681,59 @@ public class FaceSelector {
 					+ count;
 			j++;
 		}
+		int sum = 0;
+		for (i = rotation.length - 1; i >= 0; i--) {
+			sum += rotation[i];
+			if (rotation[i] > 0) {
+				msg += "\nRotation ≥ " + i + "°: " + sum;
+			}
+		}
+		msg += "\nRotation N/A: " + (files.size() - sum);
+		i = 0;
+		for (final Statistic statistic : statistics) {
+			msg += "\n" + statistic.name() + ": " + stats[i];
+			i++;
+		}
+		System.out.println(msg);
 		showMessage(SWT.ICON_INFORMATION, msg);
 		setFile(curFile, false);
+	}
+
+	private static Double getRotation() {
+		return getRotation(false);
+	}
+
+	private static Double getRotation(final boolean absolute) {
+		final Field eyeL = FIELD_EYE_L;
+		final Field eyeR = FIELD_EYE_R;
+		String value = curData.get(eyeL.field());
+		final Point p1 = toPoint(value);
+		value = curData.get(eyeR.field());
+		final Point p2 = toPoint(value);
+		if (p1 != null && p2 != null) {
+			final Point2D pA = new Point2D(1.0, 0.0);
+			final Point2D pB = norm(new Point2D(p2.x - p1.x, p2.y - p1.y));
+			double inverse = 1.0;
+			if (pB.y < 0 && !absolute) {
+				inverse = -1.0;
+			}
+			final double radians = Math.acos(dot(pA, pB));
+			return inverse * radians * RADIANS_TO_DEGREES;
+		}
+		return null;
+	}
+
+	private static double dot(final Point2D p1, final Point2D p2) {
+		return p1.x * p2.x + p1.y * p2.y;
+	}
+
+	private static Point2D norm(final Point2D point) {
+		if (point == null) {
+			return null;
+		}
+		final double len = Math.sqrt(Math.pow(point.x, 2)
+				+ Math.pow(point.y, 2));
+		return new Point2D(point.x / len, point.y / len);
 	}
 
 	private static void setButton(final Button button, final Field field) {
