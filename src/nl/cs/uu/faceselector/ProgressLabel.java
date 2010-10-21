@@ -199,4 +199,8 @@ public class ProgressLabel {
 		});
 	}
 
+	public void setLayoutData(final Object data) {
+		box.setLayoutData(data);
+	}
+
 }
