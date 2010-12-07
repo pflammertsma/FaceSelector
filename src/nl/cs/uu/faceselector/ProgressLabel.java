@@ -1,3 +1,16 @@
+/*
+ * Copyright 2010, CrimsonBase B.V. The Netherlands
+ * 
+ * All rights reserved. This program and the accompanying materials may not
+ * be redistributed without the explicit, written permission of:
+ *     CrimsonBase B.V.
+ *     Padualaan 8
+ *     3584 CH Utrecht
+ *     The Netherlands
+ *     +31 (0)30 890 3214
+ *     http://crimsonbase.com
+ */
+
 package nl.cs.uu.faceselector;
 
 import org.eclipse.swt.SWT;
@@ -15,6 +28,12 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
 
+/**
+ * Creates a label with an accompanying image. If clickable, the cursor changes
+ * to a hand when the mouse hovers above it.
+ * 
+ * @author CrimsonBase B.V.
+ */
 public class ProgressLabel {
 
 	public static final int MODE_TODO = 1;
@@ -36,8 +55,17 @@ public class ProgressLabel {
 
 	private static Image image1, image2, image3, image4, image5;
 
+	/**
+	 * Creates a new {@link ProgressLabel} inside a {@link Composite},
+	 * specifying whether or not it can be interacted with
+	 * 
+	 * @param parent
+	 * @param clickable
+	 */
 	public ProgressLabel(final Composite parent, final boolean clickable) {
 		if (color1 == null) {
+			// Only load these colors, images and cursors once to conserve
+			// resources
 			final Display display = parent.getDisplay();
 			color1 = new Color(display, 0, 0, 0);
 			color2 = new Color(display, 128, 128, 128);

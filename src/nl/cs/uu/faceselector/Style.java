@@ -3,6 +3,11 @@ package nl.cs.uu.faceselector;
 import org.eclipse.swt.graphics.GC;
 import org.eclipse.swt.graphics.Point;
 
+/**
+ * Represents the style in which a field should be drawn onto the photograph
+ * 
+ * @author Paul Lammertsma
+ */
 public class Style {
 
 	public static final int CIRCLE = 1;
@@ -15,19 +20,44 @@ public class Style {
 	private final int type;
 	private final String text;
 
+	/**
+	 * Creates a new {@link Style} with a type and text.
+	 * 
+	 * @param type
+	 * @param text
+	 */
 	public Style(final int type, final String text) {
 		this.type = type;
 		this.text = text;
 	}
 
+	/**
+	 * Returns the style type
+	 * 
+	 * @return
+	 */
 	public int type() {
 		return type;
 	}
 
+	/**
+	 * Returns the text to display
+	 * 
+	 * @return
+	 */
 	public String text() {
 		return text;
 	}
 
+	/**
+	 * Draws the {@link Style} into a {@link GC} object at a specified location
+	 * with a given radius and size.
+	 * 
+	 * @param gc
+	 * @param p
+	 * @param radius
+	 * @param size
+	 */
 	public void draw(final GC gc, final Point p, final int radius,
 			final int size) {
 		gc.setAlpha(128);

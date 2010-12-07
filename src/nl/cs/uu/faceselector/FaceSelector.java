@@ -40,10 +40,32 @@ import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.MessageBox;
 import org.eclipse.swt.widgets.Shell;
 
+/**
+ * User interface, data collection and type declarations for annotating facial
+ * features.
+ * 
+ * @author Paul Lammertsma
+ */
 public class FaceSelector {
 
+	/**
+	 * Path to photographs
+	 */
+	private final static String PATH = "../Subjects/";
+
+	/**
+	 * Valid file extensions for photographs
+	 */
+	private static final String[] EXTENSIONS = new String[] { ".jpg", ".png" };
+
+	/**
+	 * Show debug information
+	 */
 	private static final boolean DEBUG = false;
 
+	/*
+	 * Various fields; be sure to add them to FIELDS_TOGGLE or FIELDS_COORD
+	 */
 	private static final Field FIELD_HEAD_T = new Field("Head top", "headT",
 			new Style(Style.LINE_ABOVE, "T"));
 	private static final Field FIELD_HEAD_B = new Field("Head bottom", "headB",
@@ -62,7 +84,19 @@ public class FaceSelector {
 	private static final Field FIELD_CROP_B = new Field("Crop bottom", "cropB");
 	private static final Field FIELD_CROP_L = new Field("Crop left", "cropL");
 
-	private static Line[] lines = new Line[] {
+	/**
+	 * Array of {@link Field}s that take a boolean value.
+	 */
+	private static final Field[] FIELDS_TOGGLE = new Field[] { FIELD_CROP_T,
+			FIELD_CROP_R, FIELD_CROP_B, FIELD_CROP_L };
+	/**
+	 * Array of {@link Field}s that take a {@link Point} value (specified by
+	 * clicking in the photograph).
+	 */
+	private static final Field[] FIELDS_COORD = new Field[] { FIELD_HEAD_T,
+			FIELD_HEAD_B, FIELD_EYE_L, FIELD_EYE_R, FIELD_NOSE, FIELD_MOUTH };
+
+	private static final Line[] LINES = new Line[] {
 			new Line(FIELD_EYE_L, FIELD_EYE_R),
 			new Line(FIELD_HEAD_T, FIELD_HEAD_B),
 		};
@@ -75,8 +109,6 @@ public class FaceSelector {
 			new Statistic("Android", new Field[] { FIELD_EYE_L, FIELD_EYE_R,
 					FIELD_MOUTH }, 10.0),
 			};
-
-	private final static String PATH = "../Subjects/";
 
 	protected static final double CIRCLE_SIZE = 5.0;
 	protected static final int FONT_SIZE = (int) (CIRCLE_SIZE * 2);
@@ -103,17 +135,17 @@ public class FaceSelector {
 	private static ProgressLabel[] label2;
 	private static ProgressLabel label3;
 
-	private static Field[] fieldsToggle = new Field[] { FIELD_CROP_T,
-			FIELD_CROP_R, FIELD_CROP_B, FIELD_CROP_L };
-	private static Field[] fieldsCoord = new Field[] { FIELD_HEAD_T,
-			FIELD_HEAD_B, FIELD_EYE_L, FIELD_EYE_R, FIELD_NOSE, FIELD_MOUTH };
-
 	private static int currentLabel;
 
 	private static boolean onlyIncomplete;
 	protected static Color color1, color2;
 	protected static Font font;
 
+	/**
+	 * Creates and displays the {@link FaceSelector} shell.
+	 * 
+	 * @param args
+	 */
 	public static void main(final String[] args) {
 		display = new Display();
 		shell = new Shell(display);
@@ -303,10 +335,10 @@ public class FaceSelector {
 				public void mouseDoubleClick(final MouseEvent e) {
 				}
 			};
-			label1 = new Label[fieldsCoord.length];
-			label2 = new ProgressLabel[fieldsCoord.length];
+			label1 = new Label[FIELDS_COORD.length];
+			label2 = new ProgressLabel[FIELDS_COORD.length];
 			int i = 0;
-			for (final Field f : fieldsCoord) {
+			for (final Field f : FIELDS_COORD) {
 				label1[i] = new Label(group2, SWT.NORMAL);
 				label1[i].setText(f.name());
 				label2[i] = new ProgressLabel(group2, true);
@@ -440,95 +472,40 @@ public class FaceSelector {
 						e.gc.setForeground(color2);
 						final int radius = (int) (CIRCLE_SIZE / 2 * scale);
 						final int size = (int) (CIRCLE_SIZE * scale);
-						if (true) {
-							final Point p[] = new Point[fieldsCoord.length];
-							final Point l[][] = new Point[lines.length][2];
-							int i = 0;
-							for (final Field field : fieldsCoord) {
-								final String value = curData.get(field.field());
-								if (value != null) {
-									p[i] = toPoint(value, scale);
-								}
-								int j = 0;
-								for (final Line line : lines) {
-									if (line.from().equals(field)) {
-										l[j][0] = p[i];
-									}
-									if (line.to().equals(field)) {
-										l[j][1] = p[i];
-									}
-									j++;
-								}
-								i++;
+						final Point p[] = new Point[FIELDS_COORD.length];
+						final Point l[][] = new Point[LINES.length][2];
+						int i = 0;
+						for (final Field field : FIELDS_COORD) {
+							final String value = curData.get(field.field());
+							if (value != null) {
+								p[i] = toPoint(value, scale);
 							}
-							for (int j = 0; j < lines.length; j++) {
-								if (l[j] != null && l[j][0] != null
+							int j = 0;
+							for (final Line line : LINES) {
+								if (line.from().equals(field)) {
+									l[j][0] = p[i];
+								}
+								if (line.to().equals(field)) {
+									l[j][1] = p[i];
+								}
+								j++;
+							}
+							i++;
+						}
+						for (int j = 0; j < LINES.length; j++) {
+							if (l[j] != null && l[j][0] != null
 										&& l[j][1] != null) {
-									e.gc.drawLine(l[j][0].x, l[j][0].y,
+								e.gc.drawLine(l[j][0].x, l[j][0].y,
 											l[j][1].x, l[j][1].y);
-								}
 							}
-							i = 0;
-							for (final Field field : fieldsCoord) {
-								final Style style = field.style();
-								if (p[i] != null && style != null) {
-									style.draw(e.gc, p[i], radius, size);
-								}
-								i++;
+						}
+						i = 0;
+						for (final Field field : FIELDS_COORD) {
+							final Style style = field.style();
+							if (p[i] != null && style != null) {
+								style.draw(e.gc, p[i], radius, size);
 							}
-						} else {
-							Point eyeL = null;
-							Point eyeR = null;
-							Point headT = null;
-							Point headB = null;
-							Point nose = null;
-							for (final Entry<String, String> set : curData
-									.entrySet()) {
-								if (set.getKey().equals(FIELD_EYE_L.field())) {
-									eyeL = toPoint(set.getValue(), scale);
-								} else if (set.getKey().equals(
-										FIELD_EYE_R.field())) {
-									eyeR = toPoint(set.getValue(), scale);
-								} else if (set.getKey()
-										.equals(FIELD_HEAD_T.field())) {
-									headT = toPoint(set.getValue(), scale);
-								} else if (set.getKey()
-										.equals(FIELD_HEAD_B.field())) {
-									headB = toPoint(set.getValue(), scale);
-								} else if (set.getKey().equals(
-										FIELD_NOSE.field())) {
-									nose = toPoint(set.getValue(), scale);
-								}
-							}
-							if (eyeL != null) {
-								drawPoint(1, e.gc, eyeL, radius, size);
-								drawString("L", e.gc, eyeL, radius);
-							}
-							if (eyeR != null) {
-								drawPoint(1, e.gc, eyeR, radius, size);
-								drawString("R", e.gc, eyeR, radius);
-							}
-							if (eyeL != null && eyeR != null) {
-								e.gc.drawLine(eyeL.x + radius, eyeL.y, eyeR.x
-										- radius, eyeR.y);
-							}
-							if (headT != null) {
-								drawPoint(2, e.gc, headT, radius, size);
-								drawString("T", e.gc, headT, radius);
-							}
-							if (headB != null) {
-								drawPoint(2, e.gc, headB, radius, size);
-								drawString("B", e.gc, headB, radius);
-							}
-							if (headT != null && headB != null) {
-								e.gc.drawLine(headT.x, headT.y + radius,
-										headB.x,
-										headB.y - radius);
-							}
-							if (nose != null) {
-								drawPoint(2, e.gc, nose, radius, size);
-								drawString("N", e.gc, nose, radius);
-							}
+							i++;
 						}
 					}
 				}
@@ -603,11 +580,6 @@ public class FaceSelector {
 		}
 	}
 
-	private static void drawString(final String string, final GC gc,
-			final Point p, final int radius) {
-		gc.drawString(string, p.x - radius / 2, p.y - FONT_SIZE + 2, true);
-	}
-
 	private static Point toPoint(final String value) {
 		return toPoint(value, 1.0);
 	}
@@ -627,7 +599,7 @@ public class FaceSelector {
 	}
 
 	protected static void showStatistics() {
-		final int cropped[] = new int[fieldsCoord.length];
+		final int cropped[] = new int[FIELDS_COORD.length];
 		final int rotation[] = new int[181];
 		final int stats[] = new int[statistics.length];
 		int count = 0;
@@ -639,7 +611,7 @@ public class FaceSelector {
 			}
 			count++;
 			int j = 0;
-			for (final Field field : fieldsCoord) {
+			for (final Field field : FIELDS_COORD) {
 				if (curData.containsKey(field.field())) {
 					final String key = curData.get(field.field());
 					if (key == null) {
@@ -683,7 +655,7 @@ public class FaceSelector {
 		}
 		String msg = "Annotated: " + count + " of " + files.size();
 		int j = 0;
-		for (final Field field : fieldsCoord) {
+		for (final Field field : FIELDS_COORD) {
 			msg += "\nCropped " + field.field() + ": " + cropped[j] + " of "
 					+ count;
 			j++;
@@ -704,10 +676,6 @@ public class FaceSelector {
 		System.out.println(msg);
 		showMessage(SWT.ICON_INFORMATION, msg);
 		setFile(curFile, false);
-	}
-
-	private static Double getRotation() {
-		return getRotation(false);
 	}
 
 	private static Double getRotation(final boolean absolute) {
@@ -784,7 +752,7 @@ public class FaceSelector {
 			double nearest = -1;
 			int nearestIndex = 0;
 			int i = 0;
-			for (final Field field : fieldsCoord) {
+			for (final Field field : FIELDS_COORD) {
 				final String value2 = curData.get(field.field());
 				if (value2 != null) {
 					final Point point2 = toPoint(value2);
@@ -862,7 +830,7 @@ public class FaceSelector {
 			final String path = files.get(curFile).getCanonicalPath();
 			curImg = new Image(display, path);
 			loadData(path);
-			for (final Field field : fieldsToggle) {
+			for (final Field field : FIELDS_TOGGLE) {
 				final String value = curData.get(field.field());
 				boolean selection = false;
 				if (value != null && value.equals("true")) {
@@ -1052,7 +1020,17 @@ public class FaceSelector {
 		for (final File file : files) {
 			if (file.isDirectory()) {
 				listFiles(file);
-			} else if (file.isFile() && file.getName().endsWith(".jpg")) {
+			} else if (file.isFile()) {
+				boolean ok = false;
+				for (final String ext : EXTENSIONS) {
+					if (file.getName().endsWith(ext)) {
+						ok = true;
+						break;
+					}
+				}
+				if (!ok) {
+					continue;
+				}
 				if (onlyIncomplete) {
 					try {
 						loadData(file.getCanonicalPath());
@@ -1070,7 +1048,7 @@ public class FaceSelector {
 
 	private static boolean isAnnotated() {
 		boolean complete = true;
-		for (final Field f : fieldsCoord) {
+		for (final Field f : FIELDS_COORD) {
 			final String field = f.field();
 			if (!curData.containsKey(field)) {
 				complete = false;
