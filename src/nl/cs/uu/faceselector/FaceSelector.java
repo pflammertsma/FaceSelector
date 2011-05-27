@@ -24,11 +24,14 @@ import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.GC;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.Point;
+import org.eclipse.swt.graphics.Rectangle;
+import org.eclipse.swt.graphics.Transform;
 import org.eclipse.swt.layout.FormAttachment;
 import org.eclipse.swt.layout.FormData;
 import org.eclipse.swt.layout.FormLayout;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.layout.RowData;
 import org.eclipse.swt.layout.RowLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
@@ -117,19 +120,25 @@ public class FaceSelector {
 
 	private static final double RADIANS_TO_DEGREES = 180 / Math.PI;
 
+	private static final boolean IMAGE_CONTROL_VERTICAL = false;
+
+	private static final boolean TRANSLATE_TO_ORIGIN = true;
+
+	private static final double GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
+
 	private static LinkedList<File> files = new LinkedList<File>();
 	private static HashMap<String, String> curData = new HashMap<String, String>();
 
 	private static Display display;
 	private static Shell shell;
 	private static Composite imgBox;
-	private static Label imgLabel;
 
 	private static Image curImg;
 	private static int curFile = -1;
 
-	protected static double scale;
+	protected static float scale;
 
+	private static Button buttonImageNumber;
 	private static Button buttonT, buttonR, buttonB, buttonL;
 	private static Label[] label1;
 	private static ProgressLabel[] label2;
@@ -138,7 +147,7 @@ public class FaceSelector {
 	private static int currentLabel;
 
 	private static boolean onlyIncomplete;
-	protected static Color color1, color2;
+	protected static Color color1, color2, color3, color4;
 	protected static Font font;
 
 	/**
@@ -152,6 +161,8 @@ public class FaceSelector {
 
 		color1 = new Color(display, 0, 0, 0);
 		color2 = new Color(display, 0, 255, 0);
+		color3 = new Color(display, 0, 128, 160);
+		color4 = new Color(display, 255, 255, 255);
 		font = new Font(display, "Courier New", FONT_SIZE, SWT.NORMAL);
 
 		display.addFilter(SWT.KeyDown, new Listener() {
@@ -160,10 +171,36 @@ public class FaceSelector {
 				Button button = null;
 				switch (e.keyCode) {
 				case SWT.ARROW_RIGHT:
+					if ((e.stateMask & SWT.SHIFT) > 0) {
+						setOffset(1, 0);
+					} else {
+						setFile(curFile + 1, true);
+					}
+					break;
+				case SWT.ARROW_LEFT:
+					if ((e.stateMask & SWT.SHIFT) > 0) {
+						setOffset(-1, 0);
+					} else {
+						setFile(curFile - 1, true);
+					}
+					break;
+				case SWT.ARROW_DOWN:
+					if ((e.stateMask & SWT.SHIFT) > 0) {
+						setOffset(0, 1);
+					} else {
+						setFile(curFile + 1, true);
+					}
+					break;
+				case SWT.ARROW_UP:
+					if ((e.stateMask & SWT.SHIFT) > 0) {
+						setOffset(0, -1);
+					} else {
+						setFile(curFile - 1, true);
+					}
+					break;
 				case SWT.PAGE_DOWN:
 					setFile(curFile + 1, true);
 					break;
-				case SWT.ARROW_LEFT:
 				case SWT.PAGE_UP:
 					setFile(curFile - 1, true);
 					break;
@@ -193,23 +230,69 @@ public class FaceSelector {
 					}
 					break;
 				case SWT.ESC:
-					final int result = showMessage(SWT.YES | SWT.NO
-							| SWT.ICON_QUESTION, "Revert data from file?");
-					if (result == SWT.YES) {
-						load();
+					shell.close();
+					break;
+				case 'z':
+					if ((e.stateMask & SWT.CTRL) == 0) {
+						// Only CTRL+Z resets
+						break;
+					}
+				case 'r':
+					if (isAnnotated()) {
+						final int result = showMessage(SWT.YES | SWT.NO
+								| SWT.ICON_QUESTION, "Revert data from file?");
+						if (result == SWT.YES) {
+							load();
+						}
 					}
 					break;
 				case 'w':
+					// Crop TOP
 					button = buttonT;
 					break;
 				case 'a':
+					// Crop LEFT
 					button = buttonL;
 					break;
 				case 's':
+					// Crop BOTTOM
 					button = buttonB;
 					break;
 				case 'd':
+					// Crop RIGHT
 					button = buttonR;
+					break;
+				case 'c':
+					// Copy data from previous frame
+					try {
+						if (isAnnotated()) {
+							if (showMessage(SWT.ICON_QUESTION | SWT.YES
+									| SWT.NO, "Discard current data?") == SWT.NO) {
+								break;
+							}
+						}
+						curData = getData(curFile - 1);
+						imgBox.redraw();
+					} catch (Exception ex) {
+						showMessage(SWT.ICON_ERROR, ex.getMessage());
+					}
+					break;
+				case '[':
+					rotate(-0.5f / RADIANS_TO_DEGREES);
+					break;
+				case ']':
+					rotate(0.5f / RADIANS_TO_DEGREES);
+					break;
+				case '-':
+				case SWT.KEYPAD_SUBTRACT:
+					scale(1 / 1.01f);
+					break;
+				case '=':
+					if ((e.stateMask & SWT.SHIFT) == 0) {
+						break;
+					}
+				case SWT.KEYPAD_ADD:
+					scale(1.01f);
 					break;
 				}
 				if (button != null) {
@@ -296,13 +379,137 @@ public class FaceSelector {
 			buttonL.addSelectionListener(croppedListener);
 		}
 
+		final Composite imgControl = new Composite(shell, SWT.NORMAL);
+		{
+			FormData fd = new FormData();
+			final int width = 110;
+			if (IMAGE_CONTROL_VERTICAL) {
+				fd.bottom = new FormAttachment(group1, -2, SWT.TOP);
+				fd.left = new FormAttachment(0, 2);
+				fd.right = new FormAttachment(100, -2);
+				imgControl.setLayout(new FormLayout());
+			} else {
+				fd = new FormData();
+				fd.bottom = new FormAttachment(100, -2);
+				fd.left = new FormAttachment(100, -width - 10);
+				fd.top = new FormAttachment(group1, 0, SWT.TOP);
+				fd.right = new FormAttachment(100, -2);
+				final RowLayout rowLayout = new RowLayout(SWT.VERTICAL);
+				rowLayout.fill = true;
+				rowLayout.justify = true;
+				rowLayout.center = true;
+				rowLayout.pack = false;
+				imgControl.setLayout(rowLayout);
+			}
+			imgControl.setLayoutData(fd);
+			buttonImageNumber = new Button(imgControl, SWT.NORMAL);
+			if (IMAGE_CONTROL_VERTICAL) {
+				fd = new FormData();
+				fd.left = new FormAttachment(0, 0);
+				fd.right = new FormAttachment(20, 0);
+				fd.bottom = new FormAttachment(100, -5);
+				buttonImageNumber.setLayoutData(fd);
+			} else {
+				RowData rd = new RowData();
+				rd.width = width;
+				buttonImageNumber.setLayoutData(rd);
+			}
+			buttonImageNumber.setAlignment(SWT.CENTER);
+			buttonImageNumber.addSelectionListener(new SelectionListener() {
+				@Override
+				public void widgetSelected(SelectionEvent e) {
+					// showMessage(0, "Go to image:");
+				}
+
+				@Override
+				public void widgetDefaultSelected(SelectionEvent e) {
+				}
+			});
+			final Button button1 = new Button(imgControl, SWT.PUSH);
+			button1.setText("< Previous");
+			if (IMAGE_CONTROL_VERTICAL) {
+				fd = new FormData();
+				fd.left = new FormAttachment(buttonImageNumber, 0, SWT.RIGHT);
+				fd.right = new FormAttachment(40, -1);
+				button1.setLayoutData(fd);
+			}
+			button1.addSelectionListener(new SelectionListener() {
+				@Override
+				public void widgetSelected(final SelectionEvent arg0) {
+					setFile(curFile - 1, true);
+				}
+
+				@Override
+				public void widgetDefaultSelected(final SelectionEvent arg0) {
+				}
+			});
+			final Button button2 = new Button(imgControl, SWT.PUSH);
+			button2.setText("Next >");
+			if (IMAGE_CONTROL_VERTICAL) {
+				fd = new FormData();
+				fd.left = new FormAttachment(button1, 1, SWT.RIGHT);
+				fd.right = new FormAttachment(60, 0);
+				button2.setLayoutData(fd);
+			}
+			button2.addSelectionListener(new SelectionListener() {
+				@Override
+				public void widgetSelected(final SelectionEvent arg0) {
+					setFile(curFile + 1, true);
+				}
+
+				@Override
+				public void widgetDefaultSelected(final SelectionEvent arg0) {
+				}
+			});
+			final Button button3 = new Button(imgControl, SWT.PUSH);
+			button3.setText("Statistics");
+			if (IMAGE_CONTROL_VERTICAL) {
+				fd = new FormData();
+				fd.left = new FormAttachment(button2, 1, SWT.RIGHT);
+				fd.right = new FormAttachment(80, 0);
+				button3.setLayoutData(fd);
+			}
+			button3.addSelectionListener(new SelectionListener() {
+				@Override
+				public void widgetSelected(final SelectionEvent arg0) {
+					showStatistics();
+				}
+
+				@Override
+				public void widgetDefaultSelected(final SelectionEvent arg0) {
+				}
+			});
+			final Button button4 = new Button(imgControl, SWT.PUSH);
+			button4.setText("Controls");
+			if (IMAGE_CONTROL_VERTICAL) {
+				fd = new FormData();
+				fd.left = new FormAttachment(button3, 1, SWT.RIGHT);
+				fd.right = new FormAttachment(100, 0);
+				button4.setLayoutData(fd);
+			}
+			button4.addSelectionListener(new SelectionListener() {
+				@Override
+				public void widgetSelected(final SelectionEvent arg0) {
+					showControls();
+				}
+
+				@Override
+				public void widgetDefaultSelected(final SelectionEvent arg0) {
+				}
+			});
+		}
+
 		final Group group2 = new Group(shell, SWT.NORMAL);
 		{
 			group2.setText("Features");
 			final FormData fd = new FormData();
 			fd.bottom = new FormAttachment(100, -2);
 			fd.left = new FormAttachment(group1, 4, SWT.RIGHT);
-			fd.right = new FormAttachment(100, -2);
+			if (IMAGE_CONTROL_VERTICAL) {
+				fd.right = new FormAttachment(100, -2);
+			} else {
+				fd.right = new FormAttachment(imgControl, -2, SWT.LEFT);
+			}
 			fd1.top = new FormAttachment(group2, 0, SWT.TOP);
 			group2.setLayoutData(fd);
 			final GridLayout gridLayout = new GridLayout(2, false);
@@ -352,71 +559,6 @@ public class FaceSelector {
 			label3.setLayoutData(data);
 		}
 
-		final Composite imgControl = new Composite(shell, SWT.NORMAL);
-		{
-			FormData fd = new FormData();
-			fd.bottom = new FormAttachment(group1, -2, SWT.TOP);
-			fd.left = new FormAttachment(0, 2);
-			fd.right = new FormAttachment(100, -2);
-			imgControl.setLayoutData(fd);
-			imgControl.setLayout(new FormLayout());
-			imgLabel = new Label(imgControl, SWT.NORMAL);
-			fd = new FormData();
-			fd.left = new FormAttachment(0, 0);
-			fd.right = new FormAttachment(40, 0);
-			fd.bottom = new FormAttachment(100, -5);
-			imgLabel.setLayoutData(fd);
-			imgLabel.setAlignment(SWT.CENTER);
-			final Button button1 = new Button(imgControl, SWT.PUSH);
-			button1.setText("< Previous");
-			fd = new FormData();
-			fd.left = new FormAttachment(imgLabel, 0, SWT.RIGHT);
-			fd.right = new FormAttachment(60, -1);
-			button1.setLayoutData(fd);
-			button1.addSelectionListener(new SelectionListener() {
-				@Override
-				public void widgetSelected(final SelectionEvent arg0) {
-					setFile(curFile - 1, true);
-				}
-
-				@Override
-				public void widgetDefaultSelected(final SelectionEvent arg0) {
-				}
-			});
-			final Button button2 = new Button(imgControl, SWT.PUSH);
-			button2.setText("Next >");
-			fd = new FormData();
-			fd.left = new FormAttachment(button1, 1, SWT.RIGHT);
-			fd.right = new FormAttachment(80, 0);
-			button2.setLayoutData(fd);
-			button2.addSelectionListener(new SelectionListener() {
-				@Override
-				public void widgetSelected(final SelectionEvent arg0) {
-					setFile(curFile + 1, true);
-				}
-
-				@Override
-				public void widgetDefaultSelected(final SelectionEvent arg0) {
-				}
-			});
-			final Button button3 = new Button(imgControl, SWT.PUSH);
-			button3.setText("Statistics");
-			fd = new FormData();
-			fd.left = new FormAttachment(button2, 1, SWT.RIGHT);
-			fd.right = new FormAttachment(100, 0);
-			button3.setLayoutData(fd);
-			button3.addSelectionListener(new SelectionListener() {
-				@Override
-				public void widgetSelected(final SelectionEvent arg0) {
-					showStatistics();
-				}
-
-				@Override
-				public void widgetDefaultSelected(final SelectionEvent arg0) {
-				}
-			});
-		}
-
 		imgBox = new Composite(shell, SWT.BORDER | SWT.DOUBLE_BUFFERED);
 		{
 			final FormData fd = new FormData();
@@ -451,6 +593,9 @@ public class FaceSelector {
 				@Override
 				public void paintControl(final PaintEvent e) {
 					if (curImg != null) {
+						e.gc.setAntialias(SWT.ON);
+						e.gc.setBackground(color1);
+						// Compute areas
 						final int srcWidth = curImg.getBounds().width;
 						final int srcHeight = curImg.getBounds().height;
 						final double srcRatio = (double) srcWidth
@@ -464,12 +609,16 @@ public class FaceSelector {
 						} else {
 							destWidth = (int) (destHeight * srcRatio);
 						}
-						scale = (((double) destWidth / (double) srcWidth) + ((double) destHeight / (double) srcHeight)) / 2;
+						// Draw frame
 						e.gc.drawImage(curImg, 0, 0, srcWidth, srcHeight, 0, 0,
 								destWidth, destHeight);
-						e.gc.setFont(font);
-						e.gc.setBackground(color1);
-						e.gc.setForeground(color2);
+						// Calculate scale
+						scale = (((float) destWidth / (float) srcWidth) +
+								((float) destHeight / (float) srcHeight)) / 2;
+						Transform tr = new Transform(e.display);
+						tr.scale(scale, scale);
+						e.gc.setTransform(tr);
+						// Gather data
 						final int radius = (int) (CIRCLE_SIZE / 2 * scale);
 						final int size = (int) (CIRCLE_SIZE * scale);
 						final Point p[] = new Point[FIELDS_COORD.length];
@@ -478,7 +627,7 @@ public class FaceSelector {
 						for (final Field field : FIELDS_COORD) {
 							final String value = curData.get(field.field());
 							if (value != null) {
-								p[i] = toPoint(value, scale);
+								p[i] = toPoint(value);
 							}
 							int j = 0;
 							for (final Line line : LINES) {
@@ -492,6 +641,40 @@ public class FaceSelector {
 							}
 							i++;
 						}
+						// Outline face, if applicable
+						Face face = makeFace(curData, false);
+						if (face.rotation != null && face.box != null
+								&& face.width > 0 && face.height > 0) {
+							float degrees = new Float(face.rotation);
+							int x = face.box.x + face.box.width / 2;
+							int y = face.box.y + face.box.height / 2;
+							int half = (int) face.width / 2;
+							e.gc.setLineWidth(2);
+							e.gc.setForeground(color4);
+							e.gc.drawRectangle(x - half, y - half,
+									(int) face.width, (int) face.width);
+							tr.translate(x, y);
+							tr.rotate(degrees);
+							e.gc.setTransform(tr);
+							e.gc.setLineWidth(3);
+							e.gc.setAlpha(128);
+							e.gc.setForeground(color4);
+							e.gc.drawOval((int) -face.width / 2,
+									(int) -face.height / 2, (int) face.width,
+									(int) face.height);
+							e.gc.setLineWidth(2);
+							e.gc.setAlpha(160);
+							e.gc.setForeground(color3);
+							e.gc.drawOval((int) -face.width / 2,
+									(int) -face.height / 2, (int) face.width,
+									(int) face.height);
+						}
+						// Draw lines
+						e.gc.setAlpha(255);
+						tr = new Transform(e.display);
+						tr.scale(scale, scale);
+						e.gc.setTransform(tr);
+						e.gc.setLineWidth(1);
 						for (int j = 0; j < LINES.length; j++) {
 							if (l[j] != null && l[j][0] != null
 										&& l[j][1] != null) {
@@ -499,6 +682,9 @@ public class FaceSelector {
 											l[j][1].x, l[j][1].y);
 							}
 						}
+						// Draw coordinate fields
+						e.gc.setFont(font);
+						e.gc.setForeground(color2);
 						i = 0;
 						for (final Field field : FIELDS_COORD) {
 							final Style style = field.style();
@@ -540,10 +726,11 @@ public class FaceSelector {
 
 		shell.setLayout(new FormLayout());
 		shell.setText(FaceSelector.class.getSimpleName());
+		final int width = IMAGE_CONTROL_VERTICAL ? 500 : 580;
 		final int height = 600;
-		shell.setSize(500, height);
+		shell.setSize(width, height);
 		shell.layout();
-		shell.setMinimumSize(500, height - imgBox.getSize().y
+		shell.setMinimumSize(width, height - imgBox.getSize().y
 				+ EXPECTED_IMAGE_SIZE.y);
 
 		shell.open();
@@ -591,9 +778,25 @@ public class FaceSelector {
 		final int pos = string.indexOf(',');
 		final Point p = new Point(0, 0);
 		if (pos > 0) {
-			p.x = (int) (Integer.parseInt(string.substring(0, pos)) * scale);
-			p.y = (int) (Integer
-					.parseInt(string.substring(pos + 1)) * scale);
+			p.x = (int) (Double.parseDouble(string.substring(0, pos)) * scale);
+			p.y = (int) (Double.parseDouble(string.substring(pos + 1)) * scale);
+		}
+		return p;
+	}
+
+	private static Point2D toPoint2D(final String value) {
+		return toPoint2D(value, 1.0);
+	}
+
+	private static Point2D toPoint2D(final String string, final double scale) {
+		if (string == null) {
+			return null;
+		}
+		final int pos = string.indexOf(',');
+		final Point2D p = new Point2D(0, 0);
+		if (pos > 0) {
+			p.x = Double.parseDouble(string.substring(0, pos)) * scale;
+			p.y = Double.parseDouble(string.substring(pos + 1)) * scale;
 		}
 		return p;
 	}
@@ -605,22 +808,23 @@ public class FaceSelector {
 		int count = 0;
 		int i = 0;
 		for (final File file : files) {
-			loadData(file);
+			HashMap<String, String> fileData = loadData(file);
 			if (!isAnnotated()) {
 				continue;
 			}
 			count++;
 			int j = 0;
 			for (final Field field : FIELDS_COORD) {
-				if (curData.containsKey(field.field())) {
-					final String key = curData.get(field.field());
+				if (fileData.containsKey(field.field())) {
+					final String key = fileData.get(field.field());
 					if (key == null) {
 						cropped[j]++;
 					}
 				}
 				j++;
 			}
-			final Double angle = getRotation(true);
+			final Face face = makeFace(fileData, true);
+			final Double angle = face.rotation;
 			int k = 0;
 			for (final Statistic statistic : statistics) {
 				boolean valid = false;
@@ -629,7 +833,7 @@ public class FaceSelector {
 				}
 				j = 0;
 				for (final Field field : statistic.fields()) {
-					final String key = curData.get(field.field());
+					final String key = fileData.get(field.field());
 					if (statistic.all() && key == null) {
 						valid = false;
 					} else if (!statistic.all() && key != null) {
@@ -675,27 +879,58 @@ public class FaceSelector {
 		}
 		System.out.println(msg);
 		showMessage(SWT.ICON_INFORMATION, msg);
-		setFile(curFile, false);
 	}
 
-	private static Double getRotation(final boolean absolute) {
+	protected static void showControls() {
+		showMessage(SWT.ICON_INFORMATION,
+				"PgUp, Up, Left\tPrevious image\n" +
+						"PgDn, Down, Right\tNext image\n" +
+						"Shift + Left\tMove points 1px left\n" +
+						"Shift + Up\tMove points 1px up\n" +
+						"Shift + Right\tMove points 1px right\n" +
+						"Shift + Down\tMove points 1px down\n" +
+						"[\tRotate left\n" +
+						"]\tRotate right\n" +
+						"+\tScale up\n" +
+						"-\tScale down");
+	}
+
+	private static Face makeFace(HashMap<String, String> data,
+			final boolean absolute) {
+		final Face face = new Face();
+		face.box = getBoundingBox(data);
 		final Field eyeL = FIELD_EYE_L;
 		final Field eyeR = FIELD_EYE_R;
-		String value = curData.get(eyeL.field());
-		final Point p1 = toPoint(value);
-		value = curData.get(eyeR.field());
-		final Point p2 = toPoint(value);
+		final Point2D p1 = toPoint2D(data.get(eyeL.field()));
+		final Point2D p2 = toPoint2D(data.get(eyeR.field()));
 		if (p1 != null && p2 != null) {
+			face.width = distance(p1, p2) * 2;
 			final Point2D pA = new Point2D(1.0, 0.0);
 			final Point2D pB = norm(new Point2D(p2.x - p1.x, p2.y - p1.y));
-			double inverse = 1.0;
-			if (pB.y < 0 && !absolute) {
-				inverse = -1.0;
-			}
 			final double radians = Math.acos(dot(pA, pB));
-			return inverse * radians * RADIANS_TO_DEGREES;
+			face.rotation = radians * RADIANS_TO_DEGREES;
+			if (absolute) {
+				face.rotation = Math.abs(face.rotation);
+			}
 		}
-		return null;
+		final Field headT = FIELD_HEAD_T;
+		final Field headB = FIELD_HEAD_B;
+		final Point2D p3 = toPoint2D(data.get(headT.field()));
+		final Point2D p4 = toPoint2D(data.get(headB.field()));
+		if (p3 != null && p4 != null) {
+			face.height = distance(p3, p4);
+			if (face.width == 0) {
+				face.width = face.height / GOLDEN_RATIO;
+			}
+			final Point2D pA = new Point2D(0.0, 1.0);
+			final Point2D pB = norm(new Point2D(p3.x - p4.x, p3.y - p4.y));
+			final double radians = Math.acos(dot(pA, pB));
+			face.rotation = radians * RADIANS_TO_DEGREES;
+			if (absolute) {
+				face.rotation = Math.abs(face.rotation);
+			}
+		}
+		return face;
 	}
 
 	private static double dot(final Point2D p1, final Point2D p2) {
@@ -747,15 +982,15 @@ public class FaceSelector {
 		if (currentLabel >= 0) {
 			setCoord(value);
 		} else {
-			final Point point = new Point(x, y);
-			Point nearestPoint = null;
+			final Point2D point = new Point2D(x, y);
+			Point2D nearestPoint = null;
 			double nearest = -1;
 			int nearestIndex = 0;
 			int i = 0;
 			for (final Field field : FIELDS_COORD) {
 				final String value2 = curData.get(field.field());
 				if (value2 != null) {
-					final Point point2 = toPoint(value2);
+					final Point2D point2 = toPoint2D(value2);
 					final double distance = distance(point, point2);
 					if (distance < 20 && (nearest < 0 || distance < nearest)) {
 						nearestPoint = point2;
@@ -773,6 +1008,10 @@ public class FaceSelector {
 	}
 
 	private static double distance(final Point a, final Point b) {
+		return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+	}
+
+	private static double distance(final Point2D a, final Point2D b) {
 		return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
 	}
 
@@ -803,6 +1042,92 @@ public class FaceSelector {
 		}
 	}
 
+	private static void setOffset(final int x, final int y) {
+		for (final Field f : FIELDS_COORD) {
+			final String field = f.field();
+			String value = curData.get(field);
+			if (value != null) {
+				final Point2D point = toPoint2D(value);
+				point.x += x;
+				point.y += y;
+				value = point.x + "," + point.y;
+				curData.put(field, value);
+			}
+		}
+		imgBox.redraw();
+	}
+
+	private static void rotate(final double radians) {
+		Matrix matrix = Matrix.rotation(radians);
+		matrix(matrix);
+	}
+
+	private static void scale(final double scale) {
+		Matrix matrix = Matrix.scale(scale);
+		matrix(matrix);
+	}
+
+	public static void matrix(Matrix matrix) {
+		int x = 0, y = 0;
+		if (TRANSLATE_TO_ORIGIN) {
+			Rectangle bounds = getBoundingBox(curData);
+			x = bounds.x + bounds.width / 2;
+			y = bounds.y + bounds.height / 2;
+		}
+		if (DEBUG) {
+			System.out.println("Matrix transformation with " + matrix);
+		}
+		for (final Field f : FIELDS_COORD) {
+			final String field = f.field();
+			String value = curData.get(field);
+			if (value != null) {
+				final Point2D point2d = toPoint2D(value);
+				point2d.x -= x;
+				point2d.y -= y;
+				Point2D point = Matrix.cross(point2d, matrix);
+				point.x += x;
+				point.y += y;
+				if (DEBUG) {
+					System.out.println(field + " transformed from " + value
+							+ " to " + point.x
+							+ "," + point.y);
+				}
+				value = point.x + "," + point.y;
+				curData.put(field, value);
+			}
+		}
+		imgBox.redraw();
+	}
+
+	private static Rectangle getBoundingBox(HashMap<String, String> data) {
+		boolean first = true;
+		// FIXME replace with Recangle2D
+		Rectangle bounds = new Rectangle(0, 0, 0, 0);
+		for (final Field f : FIELDS_COORD) {
+			final String field = f.field();
+			String value = data.get(field);
+			if (value != null) {
+				Point2D point = toPoint2D(value);
+				if (point.x < bounds.x || first) {
+					bounds.x = (int) point.x;
+				}
+				if (point.y < bounds.y || first) {
+					bounds.y = (int) point.y;
+				}
+				if (point.x > bounds.width || first) {
+					bounds.width = (int) point.x;
+				}
+				if (point.y > bounds.height || first) {
+					bounds.height = (int) point.y;
+				}
+				first = false;
+			}
+		}
+		bounds.width -= bounds.x;
+		bounds.height -= bounds.y;
+		return bounds;
+	}
+
 	private static String getData(final Field field) {
 		final String key = field.field();
 		if (curData.containsKey(key)) {
@@ -821,15 +1146,28 @@ public class FaceSelector {
 		} else if (curFile < 0) {
 			curFile = files.size() - 1;
 		}
-		imgLabel.setText("Image " + (curFile + 1) + " of " + files.size());
+		buttonImageNumber.setText("Image " + (curFile + 1) + " of "
+				+ files.size());
 		load();
+	}
+
+	private static HashMap<String, String> getData(int i) throws Exception {
+		if (i > files.size() - 1) {
+			throw new IndexOutOfBoundsException(
+					"This is beyond the last file in the sequence.");
+		} else if (i < 0) {
+			throw new IndexOutOfBoundsException(
+					"This is the first file in the sequence.");
+		}
+		final String path = files.get(i).getCanonicalPath();
+		return loadData(path);
 	}
 
 	private static void load() {
 		try {
 			final String path = files.get(curFile).getCanonicalPath();
 			curImg = new Image(display, path);
-			loadData(path);
+			curData = loadData(path);
 			for (final Field field : FIELDS_TOGGLE) {
 				final String value = curData.get(field.field());
 				boolean selection = false;
@@ -857,12 +1195,13 @@ public class FaceSelector {
 		updateCoords(false);
 	}
 
-	private static void loadData(final String path) {
+	private static HashMap<String, String> loadData(final String path) {
 		final File file = new File(path + ".txt");
-		loadData(file);
+		return loadData(file);
 	}
 
-	private static void loadData(File file) {
+	private static HashMap<String, String> loadData(File file) {
+		HashMap<String, String> response = new HashMap<String, String>();
 		if (!file.getName().endsWith(".txt")) {
 			try {
 				file = new File(file.getCanonicalPath() + ".txt");
@@ -870,7 +1209,6 @@ public class FaceSelector {
 				throw new RuntimeException(e);
 			}
 		}
-		curData.clear();
 		if (file.exists()) {
 			try {
 				final FileReader input = new FileReader(file);
@@ -890,7 +1228,7 @@ public class FaceSelector {
 						if (value.equals("null")) {
 							value = null;
 						}
-						curData.put(key, value);
+						response.put(key, value);
 					} else {
 						System.err.println("Parse error on line " + count
 								+ " of " + file);
@@ -902,10 +1240,11 @@ public class FaceSelector {
 				e.printStackTrace();
 			}
 			if (DEBUG) {
-				System.out.println("Read " + curData.size()
+				System.out.println("Read " + response.size()
 						+ " fields for image #" + (curFile + 1));
 			}
 		}
+		return response;
 	}
 
 	private static void updateCoords(final boolean fromUI) {
@@ -1033,7 +1372,7 @@ public class FaceSelector {
 				}
 				if (onlyIncomplete) {
 					try {
-						loadData(file.getCanonicalPath());
+						curData = loadData(file.getCanonicalPath());
 					} catch (final IOException e) {
 						throw new RuntimeException(e);
 					}
