@@ -150,7 +150,7 @@ public class FaceSelector {
 	protected static Color color1, color2, color3, color4;
 	protected static Font font;
 
-	private static int frameSize = 0;
+	private static double frameSize = 0;
 
 	/**
 	 * Creates and displays the {@link FaceSelector} shell.
@@ -1232,7 +1232,8 @@ public class FaceSelector {
 			curImg = new Image(display, path);
 			if (curImg != null && frameSize == 0) {
 				Rectangle bounds = curImg.getBounds();
-				frameSize = Math.max(bounds.width, bounds.height);
+				frameSize = Math.sqrt(Math.pow(bounds.width, 2)
+						+ Math.pow(bounds.height, 2));
 			}
 			curData = loadData(path);
 			for (final Field field : FIELDS_TOGGLE) {
