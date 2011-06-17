@@ -127,7 +127,7 @@ public class FaceSelector {
 	private static final double GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
 
 	private static LinkedList<File> files = new LinkedList<File>();
-	private static HashMap<String, String> curData = new HashMap<String, String>();
+	private static AnnotationData curData = new AnnotationData();
 
 	private static Display display;
 	private static Shell shell;
@@ -149,6 +149,8 @@ public class FaceSelector {
 	private static boolean onlyIncomplete;
 	protected static Color color1, color2, color3, color4;
 	protected static Font font;
+
+	private static int frameSize = 0;
 
 	/**
 	 * Creates and displays the {@link FaceSelector} shell.
@@ -527,7 +529,7 @@ public class FaceSelector {
 						final Object data = label2[i].getData("field");
 						if (data != null && data instanceof String) {
 							final String key = (String) data;
-							curData.remove(key);
+							curData.manual.remove(key);
 						} else {
 							throw new RuntimeException(
 									"Field is not a string: " + data);
@@ -625,7 +627,8 @@ public class FaceSelector {
 						final Point l[][] = new Point[LINES.length][2];
 						int i = 0;
 						for (final Field field : FIELDS_COORD) {
-							final String value = curData.get(field.field());
+							final String value = curData.manual.get(field
+									.field());
 							if (value != null) {
 								p[i] = toPoint(value);
 							}
@@ -641,34 +644,46 @@ public class FaceSelector {
 							}
 							i++;
 						}
+						// Outline auto-annotated face, if applicable
+						Face faceA = makeFace(curData.automatic, false);
+						if (faceA.box != null && faceA.width > 0
+								&& faceA.height > 0) {
+							int x = faceA.box.x + faceA.box.width / 2;
+							int y = faceA.box.y + faceA.box.height / 2;
+							int half = (int) faceA.width / 2;
+							e.gc.drawRectangle(x - half, y - half,
+									(int) faceA.width, (int) faceA.width);
+						}
 						// Outline face, if applicable
-						Face face = makeFace(curData, false);
-						if (face.rotation != null && face.box != null
-								&& face.width > 0 && face.height > 0) {
-							float degrees = new Float(face.rotation);
-							int x = face.box.x + face.box.width / 2;
-							int y = face.box.y + face.box.height / 2;
-							int half = (int) face.width / 2;
+						Face faceM = makeFace(curData.manual, false);
+						if (faceM.rotation != null && faceM.box != null
+								&& faceM.width > 0 && faceM.height > 0) {
+							float degrees = new Float(faceM.rotation);
+							int x = faceM.box.x + faceM.box.width / 2;
+							int y = faceM.box.y + faceM.box.height / 2;
+							int half = (int) faceM.width / 2;
 							e.gc.setLineWidth(2);
 							e.gc.setForeground(color4);
 							e.gc.drawRectangle(x - half, y - half,
-									(int) face.width, (int) face.width);
+									(int) faceM.width, (int) faceM.width);
 							tr.translate(x, y);
 							tr.rotate(degrees);
 							e.gc.setTransform(tr);
 							e.gc.setLineWidth(3);
 							e.gc.setAlpha(128);
 							e.gc.setForeground(color4);
-							e.gc.drawOval((int) -face.width / 2,
-									(int) -face.height / 2, (int) face.width,
-									(int) face.height);
+							e.gc.drawOval((int) -faceM.width / 2,
+									(int) -faceM.height / 2, (int) faceM.width,
+									(int) faceM.height);
 							e.gc.setLineWidth(2);
 							e.gc.setAlpha(160);
 							e.gc.setForeground(color3);
-							e.gc.drawOval((int) -face.width / 2,
-									(int) -face.height / 2, (int) face.width,
-									(int) face.height);
+							e.gc.drawOval((int) -faceM.width / 2,
+									(int) -faceM.height / 2, (int) faceM.width,
+									(int) faceM.height);
 						}
+						System.out.println("error: "
+								+ faceM.computeError(faceA, frameSize));
 						// Draw lines
 						e.gc.setAlpha(255);
 						tr = new Transform(e.display);
@@ -801,29 +816,64 @@ public class FaceSelector {
 		return p;
 	}
 
+	private static Rectangle toRectangle(final String value) {
+		return toRectangle(value, 1.0);
+	}
+
+	private static Rectangle toRectangle(final String string, final double scale) {
+		if (string == null) {
+			return null;
+		}
+		int pos = 0;
+		int pos2 = string.indexOf(',', pos + 1);
+		final Rectangle p = new Rectangle(0, 0, 0, 0);
+		if (pos2 > 0) {
+			p.x = (int) (Double.parseDouble(string.substring(pos, pos2)) * scale);
+			pos = pos2 + 1;
+			pos2 = string.indexOf(',', pos);
+			p.y = (int) (Double.parseDouble(string.substring(pos, pos2)) * scale);
+			pos = pos2 + 1;
+			pos2 = string.indexOf(',', pos);
+			p.width = (int) (Double.parseDouble(string.substring(pos, pos2)) * scale);
+			pos = pos2 + 1;
+			p.height = (int) (Double.parseDouble(string.substring(pos)) * scale);
+		}
+		return p;
+	}
+
 	protected static void showStatistics() {
 		final int cropped[] = new int[FIELDS_COORD.length];
 		final int rotation[] = new int[181];
 		final int stats[] = new int[statistics.length];
+		double error = 0.0;
 		int count = 0;
 		int i = 0;
 		for (final File file : files) {
-			HashMap<String, String> fileData = loadData(file);
+			AnnotationData fileData;
+			try {
+				fileData = loadData(file.getCanonicalPath());
+			} catch (IOException e) {
+				e.printStackTrace();
+				continue;
+			}
 			if (!isAnnotated()) {
 				continue;
 			}
 			count++;
+			Face faceM = makeFace(fileData.manual, false);
+			Face faceA = makeFace(fileData.automatic, false);
+			error += faceM.computeError(faceA, frameSize);
 			int j = 0;
 			for (final Field field : FIELDS_COORD) {
-				if (fileData.containsKey(field.field())) {
-					final String key = fileData.get(field.field());
+				if (fileData.manual.containsKey(field.field())) {
+					final String key = fileData.manual.get(field.field());
 					if (key == null) {
 						cropped[j]++;
 					}
 				}
 				j++;
 			}
-			final Face face = makeFace(fileData, true);
+			final Face face = makeFace(fileData.manual, true);
 			final Double angle = face.rotation;
 			int k = 0;
 			for (final Statistic statistic : statistics) {
@@ -833,7 +883,7 @@ public class FaceSelector {
 				}
 				j = 0;
 				for (final Field field : statistic.fields()) {
-					final String key = fileData.get(field.field());
+					final String key = fileData.manual.get(field.field());
 					if (statistic.all() && key == null) {
 						valid = false;
 					} else if (!statistic.all() && key != null) {
@@ -858,6 +908,7 @@ public class FaceSelector {
 			i++;
 		}
 		String msg = "Annotated: " + count + " of " + files.size();
+		msg += "\nAutomatic annotation error: " + (error / count);
 		int j = 0;
 		for (final Field field : FIELDS_COORD) {
 			msg += "\nCropped " + field.field() + ": " + cropped[j] + " of "
@@ -899,6 +950,11 @@ public class FaceSelector {
 			final boolean absolute) {
 		final Face face = new Face();
 		face.box = getBoundingBox(data);
+		if (face.box == null) {
+			return face;
+		}
+		face.width = face.box.width;
+		face.height = face.box.height;
 		final Field eyeL = FIELD_EYE_L;
 		final Field eyeR = FIELD_EYE_R;
 		final Point2D p1 = toPoint2D(data.get(eyeL.field()));
@@ -988,7 +1044,7 @@ public class FaceSelector {
 			int nearestIndex = 0;
 			int i = 0;
 			for (final Field field : FIELDS_COORD) {
-				final String value2 = curData.get(field.field());
+				final String value2 = curData.manual.get(field.field());
 				if (value2 != null) {
 					final Point2D point2 = toPoint2D(value2);
 					final double distance = distance(point, point2);
@@ -1020,7 +1076,7 @@ public class FaceSelector {
 			final Object data = label2[currentLabel].getData("field");
 			if (data != null && data instanceof String) {
 				final String key = (String) data;
-				curData.put(key, value);
+				curData.manual.put(key, value);
 			} else {
 				throw new RuntimeException("Field is not a string: " + data);
 			}
@@ -1036,7 +1092,7 @@ public class FaceSelector {
 			if (button.getSelection()) {
 				value = "true";
 			}
-			curData.put(key, value);
+			curData.manual.put(key, value);
 		} else {
 			throw new RuntimeException("Button does not contain toggle data");
 		}
@@ -1045,13 +1101,13 @@ public class FaceSelector {
 	private static void setOffset(final int x, final int y) {
 		for (final Field f : FIELDS_COORD) {
 			final String field = f.field();
-			String value = curData.get(field);
+			String value = curData.manual.get(field);
 			if (value != null) {
 				final Point2D point = toPoint2D(value);
 				point.x += x;
 				point.y += y;
 				value = point.x + "," + point.y;
-				curData.put(field, value);
+				curData.manual.put(field, value);
 			}
 		}
 		imgBox.redraw();
@@ -1070,7 +1126,7 @@ public class FaceSelector {
 	public static void matrix(Matrix matrix) {
 		int x = 0, y = 0;
 		if (TRANSLATE_TO_ORIGIN) {
-			Rectangle bounds = getBoundingBox(curData);
+			Rectangle bounds = getBoundingBox(curData.manual);
 			x = bounds.x + bounds.width / 2;
 			y = bounds.y + bounds.height / 2;
 		}
@@ -1079,7 +1135,7 @@ public class FaceSelector {
 		}
 		for (final Field f : FIELDS_COORD) {
 			final String field = f.field();
-			String value = curData.get(field);
+			String value = curData.manual.get(field);
 			if (value != null) {
 				final Point2D point2d = toPoint2D(value);
 				point2d.x -= x;
@@ -1093,7 +1149,7 @@ public class FaceSelector {
 							+ "," + point.y);
 				}
 				value = point.x + "," + point.y;
-				curData.put(field, value);
+				curData.manual.put(field, value);
 			}
 		}
 		imgBox.redraw();
@@ -1103,6 +1159,10 @@ public class FaceSelector {
 		boolean first = true;
 		// FIXME replace with Recangle2D
 		Rectangle bounds = new Rectangle(0, 0, 0, 0);
+		if (data.containsKey("head")) {
+			String value = data.get("head");
+			return toRectangle(value);
+		}
 		for (final Field f : FIELDS_COORD) {
 			final String field = f.field();
 			String value = data.get(field);
@@ -1123,6 +1183,9 @@ public class FaceSelector {
 				first = false;
 			}
 		}
+		if (first) {
+			return null;
+		}
 		bounds.width -= bounds.x;
 		bounds.height -= bounds.y;
 		return bounds;
@@ -1130,8 +1193,8 @@ public class FaceSelector {
 
 	private static String getData(final Field field) {
 		final String key = field.field();
-		if (curData.containsKey(key)) {
-			return curData.get(key);
+		if (curData.manual.containsKey(key)) {
+			return curData.manual.get(key);
 		}
 		return null;
 	}
@@ -1151,7 +1214,7 @@ public class FaceSelector {
 		load();
 	}
 
-	private static HashMap<String, String> getData(int i) throws Exception {
+	private static AnnotationData getData(int i) throws Exception {
 		if (i > files.size() - 1) {
 			throw new IndexOutOfBoundsException(
 					"This is beyond the last file in the sequence.");
@@ -1167,9 +1230,13 @@ public class FaceSelector {
 		try {
 			final String path = files.get(curFile).getCanonicalPath();
 			curImg = new Image(display, path);
+			if (curImg != null && frameSize == 0) {
+				Rectangle bounds = curImg.getBounds();
+				frameSize = Math.max(bounds.width, bounds.height);
+			}
 			curData = loadData(path);
 			for (final Field field : FIELDS_TOGGLE) {
-				final String value = curData.get(field.field());
+				final String value = curData.manual.get(field.field());
 				boolean selection = false;
 				if (value != null && value.equals("true")) {
 					selection = true;
@@ -1195,20 +1262,17 @@ public class FaceSelector {
 		updateCoords(false);
 	}
 
-	private static HashMap<String, String> loadData(final String path) {
-		final File file = new File(path + ".txt");
-		return loadData(file);
+	private static AnnotationData loadData(String path) {
+		AnnotationData data = new AnnotationData();
+		File file = new File(path + ".txt");
+		data.manual = loadData2(file);
+		file = new File(path + ".AUTO.txt");
+		data.automatic = loadData2(file);
+		return data;
 	}
 
-	private static HashMap<String, String> loadData(File file) {
+	protected static HashMap<String, String> loadData2(File file) {
 		HashMap<String, String> response = new HashMap<String, String>();
-		if (!file.getName().endsWith(".txt")) {
-			try {
-				file = new File(file.getCanonicalPath() + ".txt");
-			} catch (final IOException e) {
-				throw new RuntimeException(e);
-			}
-		}
 		if (file.exists()) {
 			try {
 				final FileReader input = new FileReader(file);
@@ -1254,8 +1318,8 @@ public class FaceSelector {
 			final Object data = label.getData("field");
 			if (data != null && data instanceof String) {
 				final String field = (String) data;
-				if (curData.containsKey(field)) {
-					String value = curData.get(field);
+				if (curData.manual.containsKey(field)) {
+					String value = curData.manual.get(field);
 					boolean isNull = false;
 					if (value == null) {
 						value = "N/A";
@@ -1314,7 +1378,7 @@ public class FaceSelector {
 	private static void save() {
 		if (curFile >= 0) {
 			File file;
-			if (curData.size() > 0) {
+			if (curData.manual.size() > 0) {
 				try {
 					file = new File(files.get(curFile).getCanonicalPath()
 							+ ".txt");
@@ -1323,7 +1387,7 @@ public class FaceSelector {
 						final BufferedWriter bufferedWriter = new BufferedWriter(
 								new FileWriter(file));
 						int count = 0;
-						for (final Entry<String, String> set : curData
+						for (final Entry<String, String> set : curData.manual
 								.entrySet()) {
 							bufferedWriter.write(set.getKey() + "="
 									+ set.getValue() + "\n");
@@ -1389,7 +1453,7 @@ public class FaceSelector {
 		boolean complete = true;
 		for (final Field f : FIELDS_COORD) {
 			final String field = f.field();
-			if (!curData.containsKey(field)) {
+			if (!curData.manual.containsKey(field)) {
 				complete = false;
 				break;
 			}
