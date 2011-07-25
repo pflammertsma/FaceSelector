@@ -42,6 +42,7 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.MessageBox;
 import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.Text;
 
 /**
  * User interface, data collection and type declarations for annotating facial
@@ -99,6 +100,13 @@ public class FaceSelector {
 	private static final Field[] FIELDS_COORD = new Field[] { FIELD_HEAD_T,
 			FIELD_HEAD_B, FIELD_EYE_L, FIELD_EYE_R, FIELD_NOSE, FIELD_MOUTH };
 
+	/**
+	 * Array of {@link Field}s that must be within the detection box in order to
+	 * qualify a match.
+	 */
+	protected static final Field[] FIELDS_REQUIRE_MATCH = new Field[] {
+			FIELD_EYE_L, FIELD_EYE_R, FIELD_NOSE, FIELD_MOUTH };
+
 	private static final Line[] LINES = new Line[] {
 			new Line(FIELD_EYE_L, FIELD_EYE_R),
 			new Line(FIELD_HEAD_T, FIELD_HEAD_B),
@@ -127,6 +135,7 @@ public class FaceSelector {
 	private static final double GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
 
 	private static LinkedList<File> files = new LinkedList<File>();
+	private static LinkedList<File> excludedDirs = new LinkedList<File>();
 	private static AnnotationData curData = new AnnotationData();
 
 	private static Display display;
@@ -304,7 +313,7 @@ public class FaceSelector {
 			}
 		});
 
-		final String msg = "Finding unannotated files... ";
+		String msg = "Finding unannotated files... ";
 		if (DEBUG) {
 			System.out.println(msg);
 		} else {
@@ -314,7 +323,13 @@ public class FaceSelector {
 		onlyIncomplete = true;
 		listFiles(path);
 		onlyIncomplete = false;
-		System.out.println(FaceSelector.files.size() + " file(s)");
+		String excludedDirs = "";
+		if (FaceSelector.excludedDirs.size() > 0) {
+			excludedDirs = " (" + FaceSelector.excludedDirs.size()
+					+ " excluded directories)";
+		}
+		System.out.println(FaceSelector.files.size() + " file(s)"
+				+ excludedDirs);
 
 		if (files.size() > 0) {
 			final int result = showMessage(
@@ -334,7 +349,8 @@ public class FaceSelector {
 		if (files.size() == 0) {
 			fatal("No images found in path:\n\t" + PATH);
 		} else {
-			System.out.println(FaceSelector.files.size() + " file(s)");
+			System.out.println(FaceSelector.files.size() + " file(s)"
+					+ excludedDirs);
 		}
 
 		final SelectionListener croppedListener = new SelectionListener() {
@@ -420,7 +436,35 @@ public class FaceSelector {
 			buttonImageNumber.addSelectionListener(new SelectionListener() {
 				@Override
 				public void widgetSelected(SelectionEvent e) {
-					// showMessage(0, "Go to image:");
+					final Shell dialog = new Shell(shell, SWT.DIALOG_TRIM
+							| SWT.APPLICATION_MODAL);
+					RowLayout layout = new RowLayout();
+					layout.fill = true;
+					layout.marginHeight = layout.marginWidth = 10;
+					dialog.setLayout(layout);
+					dialog.setText("Go to image:");
+					final Text txt = new Text(dialog, SWT.BORDER);
+					final Button btn = new Button(dialog, SWT.PUSH);
+					btn.addSelectionListener(new SelectionListener() {
+						@Override
+						public void widgetSelected(SelectionEvent e) {
+							try {
+								int index = Integer.parseInt(txt.getText());
+								dialog.dispose();
+								setFile(index - 1, true);
+							} catch (NumberFormatException ex) {
+								System.out.println(ex);
+							}
+						}
+
+						@Override
+						public void widgetDefaultSelected(SelectionEvent e) {
+						}
+					});
+					btn.setText("Go");
+					dialog.setDefaultButton(btn);
+					dialog.pack();
+					dialog.open();
 				}
 
 				@Override
@@ -659,13 +703,13 @@ public class FaceSelector {
 						if (faceM.rotation != null && faceM.box != null
 								&& faceM.width > 0 && faceM.height > 0) {
 							float degrees = new Float(faceM.rotation);
-							int x = faceM.box.x + faceM.box.width / 2;
-							int y = faceM.box.y + faceM.box.height / 2;
-							int half = (int) faceM.width / 2;
 							e.gc.setLineWidth(2);
 							e.gc.setForeground(color4);
-							e.gc.drawRectangle(x - half, y - half,
-									(int) faceM.width, (int) faceM.width);
+							e.gc.drawRectangle(faceM.boxSquare);
+							int x = faceM.boxSquare.x + faceM.boxSquare.width
+									/ 2;
+							int y = faceM.boxSquare.y + faceM.boxSquare.height
+									/ 2;
 							tr.translate(x, y);
 							tr.rotate(degrees);
 							e.gc.setTransform(tr);
@@ -682,8 +726,9 @@ public class FaceSelector {
 									(int) -faceM.height / 2, (int) faceM.width,
 									(int) faceM.height);
 						}
-						System.out.println("error: "
-								+ faceM.computeError(faceA, frameSize));
+						System.out.println("similarity: "
+								+ faceM.similarity(faceA,
+										curData.manual));
 						// Draw lines
 						e.gc.setAlpha(255);
 						tr = new Transform(e.display);
@@ -782,7 +827,7 @@ public class FaceSelector {
 		}
 	}
 
-	private static Point toPoint(final String value) {
+	protected static Point toPoint(final String value) {
 		return toPoint(value, 1.0);
 	}
 
@@ -841,13 +886,34 @@ public class FaceSelector {
 		return p;
 	}
 
+	protected static void showROC() {
+		/* 
+		 * We're just changing the matching threshold; this is not an ROC
+		 * 
+		for (int threshold = 0; threshold <= 100; threshold += 5) {
+			showStatistics(((double) threshold) / 100);
+		}
+		*/
+	}
+
 	protected static void showStatistics() {
+		showROC();
+		String msg = showStatistics(Face.THRESHOLD);
+		System.out.println(msg);
+		showMessage(SWT.ICON_INFORMATION, msg);
+	}
+
+	protected static String showStatistics(double threshold) {
 		final int cropped[] = new int[FIELDS_COORD.length];
 		final int rotation[] = new int[181];
 		final int stats[] = new int[statistics.length];
-		double error = 0.0;
 		int count = 0;
 		int i = 0;
+
+		double similaritySum = 0.0;
+		int falsePositives = 0, truePositives = 0;
+
+		LinkedList<Double> errors = new LinkedList<Double>();
 		for (final File file : files) {
 			AnnotationData fileData;
 			try {
@@ -862,7 +928,15 @@ public class FaceSelector {
 			count++;
 			Face faceM = makeFace(fileData.manual, false);
 			Face faceA = makeFace(fileData.automatic, false);
-			error += faceM.computeError(faceA, frameSize);
+			double similarity = faceM.similarity(faceA, fileData.manual,
+					threshold);
+			if ((faceA == null && faceM != null) || similarity < threshold) {
+				falsePositives++;
+			} else {
+				errors.add(similarity);
+				similaritySum += similarity;
+				truePositives++;
+			}
 			int j = 0;
 			for (final Field field : FIELDS_COORD) {
 				if (fileData.manual.containsKey(field.field())) {
@@ -907,8 +981,24 @@ public class FaceSelector {
 			}
 			i++;
 		}
+		double similarityMean = 1.0;
+		if (truePositives > 0) {
+			similarityMean = similaritySum / truePositives;
+		}
+		double stdDevVariance = 0.0;
+		for (Double error : errors) {
+			stdDevVariance += Math.pow(error - similarityMean, 2);
+		}
+		stdDevVariance /= truePositives - (falsePositives + 1);
+		double stdDev = Math.sqrt(stdDevVariance);
 		String msg = "Annotated: " + count + " of " + files.size();
-		msg += "\nAutomatic annotation error: " + (error / count);
+		msg += "\nAutomatic annotation accuracy threshold: " + threshold;
+		msg += "\nAutomatic annotation accuracy: " + similarityMean;
+		msg += "\nAutomatic annotation std. dev.: " + stdDev;
+		double falsePosRate = (double) falsePositives / (double) count;
+		msg += "\nAutomatic annotation false positives: "
+				+ falsePosRate + " ("
+				+ falsePositives + ")";
 		int j = 0;
 		for (final Field field : FIELDS_COORD) {
 			msg += "\nCropped " + field.field() + ": " + cropped[j] + " of "
@@ -928,8 +1018,15 @@ public class FaceSelector {
 			msg += "\n" + statistic.name() + ": " + stats[i];
 			i++;
 		}
-		System.out.println(msg);
-		showMessage(SWT.ICON_INFORMATION, msg);
+		String msg2 = threshold + "\t" + similarityMean + "\t"
+				+ falsePosRate;
+		System.out.println(msg2.replace('.', ','));
+		return msg;
+	}
+
+	private static double stdDev(int count, double sum1, double sum2) {
+		return Math.sqrt(count * sum2 - Math.pow(sum1, 2))
+				/ (count * (count - 1));
 	}
 
 	protected static void showControls() {
@@ -986,6 +1083,15 @@ public class FaceSelector {
 				face.rotation = Math.abs(face.rotation);
 			}
 		}
+		// Get the face's bounding box
+		int x = face.box.x + face.box.width / 2;
+		int y = face.box.y + face.box.height / 2;
+		int half = (int) face.width / 2;
+		face.boxSquare = new Rectangle(
+				x - half,
+				y - half,
+				(int) face.width,
+				(int) face.width);
 		return face;
 	}
 
@@ -1199,11 +1305,11 @@ public class FaceSelector {
 		return null;
 	}
 
-	private static void setFile(final int i, final boolean save) {
+	private static void setFile(final int index, final boolean save) {
 		if (save) {
 			save();
 		}
-		curFile = i;
+		curFile = index;
 		if (curFile > files.size() - 1) {
 			curFile = 0;
 		} else if (curFile < 0) {
@@ -1419,6 +1525,11 @@ public class FaceSelector {
 				path = directory.getAbsolutePath();
 			}
 			fatal("Path does not exist:\n\n    " + path);
+		}
+		File excludeFile = new File(directory, ".exclude");
+		if (excludeFile.exists()) {
+			excludedDirs.add(directory);
+			return;
 		}
 		final File[] files = directory.listFiles();
 		for (final File file : files) {
