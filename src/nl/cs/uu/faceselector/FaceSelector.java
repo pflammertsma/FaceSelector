@@ -1,5 +1,6 @@
 package nl.cs.uu.faceselector;
 
+import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -9,6 +10,8 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map.Entry;
+
+import javax.imageio.ImageIO;
 
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.MouseEvent;
@@ -65,74 +68,16 @@ public class FaceSelector {
 	/**
 	 * Show debug information
 	 */
-	private static final boolean DEBUG = false;
-
-	/*
-	 * Various fields; be sure to add them to FIELDS_TOGGLE or FIELDS_COORD
-	 */
-	private static final Field FIELD_HEAD_T = new Field("Head top", "headT",
-			new Style(Style.LINE_ABOVE, "T"));
-	private static final Field FIELD_HEAD_B = new Field("Head bottom", "headB",
-			new Style(Style.LINE_BELOW, "B"));
-	private static final Field FIELD_EYE_L = new Field("Eye left", "eyeL",
-			new Style(Style.CIRCLE, "L"));
-	private static final Field FIELD_EYE_R = new Field("Eye right", "eyeR",
-			new Style(Style.CIRCLE, "R"));
-	private static final Field FIELD_NOSE = new Field("Nose", "nose",
-			new Style(Style.BOX, "N"));
-	private static final Field FIELD_MOUTH = new Field("Mouth", "mouth",
-			new Style(Style.BOX, "M"));
-
-	private static final Field FIELD_CROP_T = new Field("Crop top", "cropT");
-	private static final Field FIELD_CROP_R = new Field("Crop right", "cropR");
-	private static final Field FIELD_CROP_B = new Field("Crop bottom", "cropB");
-	private static final Field FIELD_CROP_L = new Field("Crop left", "cropL");
-
-	/**
-	 * Array of {@link Field}s that take a boolean value.
-	 */
-	private static final Field[] FIELDS_TOGGLE = new Field[] { FIELD_CROP_T,
-			FIELD_CROP_R, FIELD_CROP_B, FIELD_CROP_L };
-	/**
-	 * Array of {@link Field}s that take a {@link Point} value (specified by
-	 * clicking in the photograph).
-	 */
-	private static final Field[] FIELDS_COORD = new Field[] { FIELD_HEAD_T,
-			FIELD_HEAD_B, FIELD_EYE_L, FIELD_EYE_R, FIELD_NOSE, FIELD_MOUTH };
-
-	/**
-	 * Array of {@link Field}s that must be within the detection box in order to
-	 * qualify a match.
-	 */
-	protected static final Field[] FIELDS_REQUIRE_MATCH = new Field[] {
-			FIELD_EYE_L, FIELD_EYE_R, FIELD_NOSE, FIELD_MOUTH };
-
-	private static final Line[] LINES = new Line[] {
-			new Line(FIELD_EYE_L, FIELD_EYE_R),
-			new Line(FIELD_HEAD_T, FIELD_HEAD_B),
-		};
-
-	private static Statistic[] statistics = new Statistic[] {
-			new Statistic("Facial features", new Field[] { FIELD_EYE_L,
-					FIELD_EYE_R, FIELD_MOUTH }, null, false),
-			new Statistic("Haar", new Field[] { FIELD_HEAD_T, FIELD_HEAD_B,
-					FIELD_EYE_L, FIELD_EYE_R }, 10.0),
-			new Statistic("Android", new Field[] { FIELD_EYE_L, FIELD_EYE_R,
-					FIELD_MOUTH }, 10.0),
-			};
+	public static final boolean DEBUG = false;
 
 	protected static final double CIRCLE_SIZE = 5.0;
 	protected static final int FONT_SIZE = (int) (CIRCLE_SIZE * 2);
 
 	private static final Point EXPECTED_IMAGE_SIZE = new Point(176, 144);
 
-	private static final double RADIANS_TO_DEGREES = 180 / Math.PI;
-
 	private static final boolean IMAGE_CONTROL_VERTICAL = false;
 
-	private static final boolean TRANSLATE_TO_ORIGIN = true;
-
-	private static final double GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
+	private static final boolean READ_IMAGE_SIZES = false;
 
 	private static LinkedList<File> files = new LinkedList<File>();
 	private static LinkedList<File> excludedDirs = new LinkedList<File>();
@@ -289,21 +234,27 @@ public class FaceSelector {
 					}
 					break;
 				case '[':
-					rotate(-0.5f / RADIANS_TO_DEGREES);
+					MatrixMath.rotate(curData, -0.5f
+							/ MatrixMath.RADIANS_TO_DEGREES);
+					imgBox.redraw();
 					break;
 				case ']':
-					rotate(0.5f / RADIANS_TO_DEGREES);
+					MatrixMath.rotate(curData,
+							0.5f / MatrixMath.RADIANS_TO_DEGREES);
+					imgBox.redraw();
 					break;
 				case '-':
 				case SWT.KEYPAD_SUBTRACT:
-					scale(1 / 1.01f);
+					MatrixMath.scale(curData, 1 / 1.01f);
+					imgBox.redraw();
 					break;
 				case '=':
 					if ((e.stateMask & SWT.SHIFT) == 0) {
 						break;
 					}
 				case SWT.KEYPAD_ADD:
-					scale(1.01f);
+					MatrixMath.scale(curData, 1.01f);
+					imgBox.redraw();
 					break;
 				}
 				if (button != null) {
@@ -384,16 +335,16 @@ public class FaceSelector {
 			rowLayout.pack = false;
 			group1.setLayout(rowLayout);
 			buttonT = new Button(group1, SWT.TOGGLE);
-			setButton(buttonT, FIELD_CROP_T);
+			setButton(buttonT, Fields.FIELD_CROP_T);
 			buttonT.addSelectionListener(croppedListener);
 			buttonR = new Button(group1, SWT.TOGGLE);
-			setButton(buttonR, FIELD_CROP_R);
+			setButton(buttonR, Fields.FIELD_CROP_R);
 			buttonR.addSelectionListener(croppedListener);
 			buttonB = new Button(group1, SWT.TOGGLE);
-			setButton(buttonB, FIELD_CROP_B);
+			setButton(buttonB, Fields.FIELD_CROP_B);
 			buttonB.addSelectionListener(croppedListener);
 			buttonL = new Button(group1, SWT.TOGGLE);
-			setButton(buttonL, FIELD_CROP_L);
+			setButton(buttonL, Fields.FIELD_CROP_L);
 			buttonL.addSelectionListener(croppedListener);
 		}
 
@@ -588,10 +539,10 @@ public class FaceSelector {
 				public void mouseDoubleClick(final MouseEvent e) {
 				}
 			};
-			label1 = new Label[FIELDS_COORD.length];
-			label2 = new ProgressLabel[FIELDS_COORD.length];
+			label1 = new Label[Fields.FIELDS_COORD.length];
+			label2 = new ProgressLabel[Fields.FIELDS_COORD.length];
 			int i = 0;
-			for (final Field f : FIELDS_COORD) {
+			for (final Field f : Fields.FIELDS_COORD) {
 				label1[i] = new Label(group2, SWT.NORMAL);
 				label1[i].setText(f.name());
 				label2[i] = new ProgressLabel(group2, true);
@@ -667,17 +618,17 @@ public class FaceSelector {
 						// Gather data
 						final int radius = (int) (CIRCLE_SIZE / 2 * scale);
 						final int size = (int) (CIRCLE_SIZE * scale);
-						final Point p[] = new Point[FIELDS_COORD.length];
-						final Point l[][] = new Point[LINES.length][2];
+						final Point p[] = new Point[Fields.FIELDS_COORD.length];
+						final Point l[][] = new Point[Fields.LINES.length][2];
 						int i = 0;
-						for (final Field field : FIELDS_COORD) {
+						for (final Field field : Fields.FIELDS_COORD) {
 							final String value = curData.manual.get(field
 									.field());
 							if (value != null) {
-								p[i] = toPoint(value);
+								p[i] = MatrixMath.toPoint(value);
 							}
 							int j = 0;
-							for (final Line line : LINES) {
+							for (final Line line : Fields.LINES) {
 								if (line.from().equals(field)) {
 									l[j][0] = p[i];
 								}
@@ -689,7 +640,8 @@ public class FaceSelector {
 							i++;
 						}
 						// Outline auto-annotated face, if applicable
-						Face faceA = makeFace(curData.automatic, false);
+						Face faceA = new Face(curData.automatic,
+								curData.imageSize);
 						if (faceA.box != null && faceA.width > 0
 								&& faceA.height > 0) {
 							int x = faceA.box.x + faceA.box.width / 2;
@@ -699,7 +651,7 @@ public class FaceSelector {
 									(int) faceA.width, (int) faceA.width);
 						}
 						// Outline face, if applicable
-						Face faceM = makeFace(curData.manual, false);
+						Face faceM = new Face(curData.manual, curData.imageSize);
 						if (faceM.rotation != null && faceM.box != null
 								&& faceM.width > 0 && faceM.height > 0) {
 							float degrees = new Float(faceM.rotation);
@@ -726,8 +678,11 @@ public class FaceSelector {
 									(int) -faceM.height / 2, (int) faceM.width,
 									(int) faceM.height);
 						}
-						System.out.println("similarity: "
+						System.out.println("\nsimilarity1: "
 								+ faceM.similarity(faceA,
+										curData.manual));
+						System.out.println("similarity2: "
+								+ faceM.similarity2(faceA,
 										curData.manual));
 						// Draw lines
 						e.gc.setAlpha(255);
@@ -735,7 +690,7 @@ public class FaceSelector {
 						tr.scale(scale, scale);
 						e.gc.setTransform(tr);
 						e.gc.setLineWidth(1);
-						for (int j = 0; j < LINES.length; j++) {
+						for (int j = 0; j < Fields.LINES.length; j++) {
 							if (l[j] != null && l[j][0] != null
 										&& l[j][1] != null) {
 								e.gc.drawLine(l[j][0].x, l[j][0].y,
@@ -746,7 +701,7 @@ public class FaceSelector {
 						e.gc.setFont(font);
 						e.gc.setForeground(color2);
 						i = 0;
-						for (final Field field : FIELDS_COORD) {
+						for (final Field field : Fields.FIELDS_COORD) {
 							final Style style = field.style();
 							if (p[i] != null && style != null) {
 								style.draw(e.gc, p[i], radius, size);
@@ -827,65 +782,6 @@ public class FaceSelector {
 		}
 	}
 
-	protected static Point toPoint(final String value) {
-		return toPoint(value, 1.0);
-	}
-
-	private static Point toPoint(final String string, final double scale) {
-		if (string == null) {
-			return null;
-		}
-		final int pos = string.indexOf(',');
-		final Point p = new Point(0, 0);
-		if (pos > 0) {
-			p.x = (int) (Double.parseDouble(string.substring(0, pos)) * scale);
-			p.y = (int) (Double.parseDouble(string.substring(pos + 1)) * scale);
-		}
-		return p;
-	}
-
-	private static Point2D toPoint2D(final String value) {
-		return toPoint2D(value, 1.0);
-	}
-
-	private static Point2D toPoint2D(final String string, final double scale) {
-		if (string == null) {
-			return null;
-		}
-		final int pos = string.indexOf(',');
-		final Point2D p = new Point2D(0, 0);
-		if (pos > 0) {
-			p.x = Double.parseDouble(string.substring(0, pos)) * scale;
-			p.y = Double.parseDouble(string.substring(pos + 1)) * scale;
-		}
-		return p;
-	}
-
-	private static Rectangle toRectangle(final String value) {
-		return toRectangle(value, 1.0);
-	}
-
-	private static Rectangle toRectangle(final String string, final double scale) {
-		if (string == null) {
-			return null;
-		}
-		int pos = 0;
-		int pos2 = string.indexOf(',', pos + 1);
-		final Rectangle p = new Rectangle(0, 0, 0, 0);
-		if (pos2 > 0) {
-			p.x = (int) (Double.parseDouble(string.substring(pos, pos2)) * scale);
-			pos = pos2 + 1;
-			pos2 = string.indexOf(',', pos);
-			p.y = (int) (Double.parseDouble(string.substring(pos, pos2)) * scale);
-			pos = pos2 + 1;
-			pos2 = string.indexOf(',', pos);
-			p.width = (int) (Double.parseDouble(string.substring(pos, pos2)) * scale);
-			pos = pos2 + 1;
-			p.height = (int) (Double.parseDouble(string.substring(pos)) * scale);
-		}
-		return p;
-	}
-
 	protected static void showROC() {
 		/* 
 		 * We're just changing the matching threshold; this is not an ROC
@@ -904,9 +800,9 @@ public class FaceSelector {
 	}
 
 	protected static String showStatistics(double threshold) {
-		final int cropped[] = new int[FIELDS_COORD.length];
+		final int cropped[] = new int[Fields.FIELDS_COORD.length];
 		final int rotation[] = new int[181];
-		final int stats[] = new int[statistics.length];
+		final int stats[] = new int[Fields.STATISTICS.length];
 		int count = 0;
 		int i = 0;
 
@@ -914,20 +810,10 @@ public class FaceSelector {
 		int falsePositives = 0, truePositives = 0;
 
 		LinkedList<Double> errors = new LinkedList<Double>();
-		for (final File file : files) {
-			AnnotationData fileData;
-			try {
-				fileData = loadData(file.getCanonicalPath());
-			} catch (IOException e) {
-				e.printStackTrace();
-				continue;
-			}
-			if (!isAnnotated()) {
-				continue;
-			}
+		for (final AnnotationData fileData : getAllData()) {
 			count++;
-			Face faceM = makeFace(fileData.manual, false);
-			Face faceA = makeFace(fileData.automatic, false);
+			Face faceM = new Face(fileData.manual, fileData.imageSize);
+			Face faceA = new Face(fileData.automatic, fileData.imageSize);
 			double similarity = faceM.similarity(faceA, fileData.manual,
 					threshold);
 			if ((faceA == null && faceM != null) || similarity < threshold) {
@@ -938,7 +824,7 @@ public class FaceSelector {
 				truePositives++;
 			}
 			int j = 0;
-			for (final Field field : FIELDS_COORD) {
+			for (final Field field : Fields.FIELDS_COORD) {
 				if (fileData.manual.containsKey(field.field())) {
 					final String key = fileData.manual.get(field.field());
 					if (key == null) {
@@ -947,10 +833,11 @@ public class FaceSelector {
 				}
 				j++;
 			}
-			final Face face = makeFace(fileData.manual, true);
+			final Face face = new Face(fileData.manual, fileData.imageSize,
+					true);
 			final Double angle = face.rotation;
 			int k = 0;
-			for (final Statistic statistic : statistics) {
+			for (final Statistic statistic : Fields.STATISTICS) {
 				boolean valid = false;
 				if (statistic.all()) {
 					valid = true;
@@ -991,6 +878,13 @@ public class FaceSelector {
 		}
 		stdDevVariance /= truePositives - (falsePositives + 1);
 		double stdDev = Math.sqrt(stdDevVariance);
+
+		if (true) {
+			System.out.println("stdDev1: " + stdDev);
+			System.out.println("stdDev2: " + MatrixMath.stdDev(errors));
+			return "";
+		}
+
 		String msg = "Annotated: " + count + " of " + files.size();
 		msg += "\nAutomatic annotation accuracy threshold: " + threshold;
 		msg += "\nAutomatic annotation accuracy: " + similarityMean;
@@ -1000,7 +894,7 @@ public class FaceSelector {
 				+ falsePosRate + " ("
 				+ falsePositives + ")";
 		int j = 0;
-		for (final Field field : FIELDS_COORD) {
+		for (final Field field : Fields.FIELDS_COORD) {
 			msg += "\nCropped " + field.field() + ": " + cropped[j] + " of "
 					+ count;
 			j++;
@@ -1014,7 +908,7 @@ public class FaceSelector {
 		}
 		msg += "\nRotation N/A: " + (files.size() - sum);
 		i = 0;
-		for (final Statistic statistic : statistics) {
+		for (final Statistic statistic : Fields.STATISTICS) {
 			msg += "\n" + statistic.name() + ": " + stats[i];
 			i++;
 		}
@@ -1024,9 +918,22 @@ public class FaceSelector {
 		return msg;
 	}
 
-	private static double stdDev(int count, double sum1, double sum2) {
-		return Math.sqrt(count * sum2 - Math.pow(sum1, 2))
-				/ (count * (count - 1));
+	public static LinkedList<AnnotationData> getAllData() {
+		LinkedList<AnnotationData> list = new LinkedList<AnnotationData>();
+		for (final File file : files) {
+			AnnotationData fileData;
+			try {
+				fileData = loadData(file.getCanonicalPath());
+			} catch (IOException e) {
+				e.printStackTrace();
+				continue;
+			}
+			if (!isAnnotated()) {
+				continue;
+			}
+			list.add(fileData);
+		}
+		return list;
 	}
 
 	protected static void showControls() {
@@ -1041,71 +948,6 @@ public class FaceSelector {
 						"]\tRotate right\n" +
 						"+\tScale up\n" +
 						"-\tScale down");
-	}
-
-	private static Face makeFace(HashMap<String, String> data,
-			final boolean absolute) {
-		final Face face = new Face();
-		face.box = getBoundingBox(data);
-		if (face.box == null) {
-			return face;
-		}
-		face.width = face.box.width;
-		face.height = face.box.height;
-		final Field eyeL = FIELD_EYE_L;
-		final Field eyeR = FIELD_EYE_R;
-		final Point2D p1 = toPoint2D(data.get(eyeL.field()));
-		final Point2D p2 = toPoint2D(data.get(eyeR.field()));
-		if (p1 != null && p2 != null) {
-			face.width = distance(p1, p2) * 2;
-			final Point2D pA = new Point2D(1.0, 0.0);
-			final Point2D pB = norm(new Point2D(p2.x - p1.x, p2.y - p1.y));
-			final double radians = Math.acos(dot(pA, pB));
-			face.rotation = radians * RADIANS_TO_DEGREES;
-			if (absolute) {
-				face.rotation = Math.abs(face.rotation);
-			}
-		}
-		final Field headT = FIELD_HEAD_T;
-		final Field headB = FIELD_HEAD_B;
-		final Point2D p3 = toPoint2D(data.get(headT.field()));
-		final Point2D p4 = toPoint2D(data.get(headB.field()));
-		if (p3 != null && p4 != null) {
-			face.height = distance(p3, p4);
-			if (face.width == 0) {
-				face.width = face.height / GOLDEN_RATIO;
-			}
-			final Point2D pA = new Point2D(0.0, 1.0);
-			final Point2D pB = norm(new Point2D(p3.x - p4.x, p3.y - p4.y));
-			final double radians = Math.acos(dot(pA, pB));
-			face.rotation = radians * RADIANS_TO_DEGREES;
-			if (absolute) {
-				face.rotation = Math.abs(face.rotation);
-			}
-		}
-		// Get the face's bounding box
-		int x = face.box.x + face.box.width / 2;
-		int y = face.box.y + face.box.height / 2;
-		int half = (int) face.width / 2;
-		face.boxSquare = new Rectangle(
-				x - half,
-				y - half,
-				(int) face.width,
-				(int) face.width);
-		return face;
-	}
-
-	private static double dot(final Point2D p1, final Point2D p2) {
-		return p1.x * p2.x + p1.y * p2.y;
-	}
-
-	private static Point2D norm(final Point2D point) {
-		if (point == null) {
-			return null;
-		}
-		final double len = Math.sqrt(Math.pow(point.x, 2)
-				+ Math.pow(point.y, 2));
-		return new Point2D(point.x / len, point.y / len);
 	}
 
 	private static void setButton(final Button button, final Field field) {
@@ -1149,11 +991,11 @@ public class FaceSelector {
 			double nearest = -1;
 			int nearestIndex = 0;
 			int i = 0;
-			for (final Field field : FIELDS_COORD) {
+			for (final Field field : Fields.FIELDS_COORD) {
 				final String value2 = curData.manual.get(field.field());
 				if (value2 != null) {
-					final Point2D point2 = toPoint2D(value2);
-					final double distance = distance(point, point2);
+					final Point2D point2 = MatrixMath.toPoint2D(value2);
+					final double distance = MatrixMath.distance(point, point2);
 					if (distance < 20 && (nearest < 0 || distance < nearest)) {
 						nearestPoint = point2;
 						nearest = distance;
@@ -1167,14 +1009,6 @@ public class FaceSelector {
 				setCoord(value);
 			}
 		}
-	}
-
-	private static double distance(final Point a, final Point b) {
-		return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
-	}
-
-	private static double distance(final Point2D a, final Point2D b) {
-		return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
 	}
 
 	private static void setCoord(final String value) {
@@ -1205,11 +1039,11 @@ public class FaceSelector {
 	}
 
 	private static void setOffset(final int x, final int y) {
-		for (final Field f : FIELDS_COORD) {
+		for (final Field f : Fields.FIELDS_COORD) {
 			final String field = f.field();
 			String value = curData.manual.get(field);
 			if (value != null) {
-				final Point2D point = toPoint2D(value);
+				final Point2D point = MatrixMath.toPoint2D(value);
 				point.x += x;
 				point.y += y;
 				value = point.x + "," + point.y;
@@ -1217,84 +1051,6 @@ public class FaceSelector {
 			}
 		}
 		imgBox.redraw();
-	}
-
-	private static void rotate(final double radians) {
-		Matrix matrix = Matrix.rotation(radians);
-		matrix(matrix);
-	}
-
-	private static void scale(final double scale) {
-		Matrix matrix = Matrix.scale(scale);
-		matrix(matrix);
-	}
-
-	public static void matrix(Matrix matrix) {
-		int x = 0, y = 0;
-		if (TRANSLATE_TO_ORIGIN) {
-			Rectangle bounds = getBoundingBox(curData.manual);
-			x = bounds.x + bounds.width / 2;
-			y = bounds.y + bounds.height / 2;
-		}
-		if (DEBUG) {
-			System.out.println("Matrix transformation with " + matrix);
-		}
-		for (final Field f : FIELDS_COORD) {
-			final String field = f.field();
-			String value = curData.manual.get(field);
-			if (value != null) {
-				final Point2D point2d = toPoint2D(value);
-				point2d.x -= x;
-				point2d.y -= y;
-				Point2D point = Matrix.cross(point2d, matrix);
-				point.x += x;
-				point.y += y;
-				if (DEBUG) {
-					System.out.println(field + " transformed from " + value
-							+ " to " + point.x
-							+ "," + point.y);
-				}
-				value = point.x + "," + point.y;
-				curData.manual.put(field, value);
-			}
-		}
-		imgBox.redraw();
-	}
-
-	private static Rectangle getBoundingBox(HashMap<String, String> data) {
-		boolean first = true;
-		// FIXME replace with Recangle2D
-		Rectangle bounds = new Rectangle(0, 0, 0, 0);
-		if (data.containsKey("head")) {
-			String value = data.get("head");
-			return toRectangle(value);
-		}
-		for (final Field f : FIELDS_COORD) {
-			final String field = f.field();
-			String value = data.get(field);
-			if (value != null) {
-				Point2D point = toPoint2D(value);
-				if (point.x < bounds.x || first) {
-					bounds.x = (int) point.x;
-				}
-				if (point.y < bounds.y || first) {
-					bounds.y = (int) point.y;
-				}
-				if (point.x > bounds.width || first) {
-					bounds.width = (int) point.x;
-				}
-				if (point.y > bounds.height || first) {
-					bounds.height = (int) point.y;
-				}
-				first = false;
-			}
-		}
-		if (first) {
-			return null;
-		}
-		bounds.width -= bounds.x;
-		bounds.height -= bounds.y;
-		return bounds;
 	}
 
 	private static String getData(final Field field) {
@@ -1342,20 +1098,20 @@ public class FaceSelector {
 						+ Math.pow(bounds.height, 2));
 			}
 			curData = loadData(path);
-			for (final Field field : FIELDS_TOGGLE) {
+			for (final Field field : Fields.FIELDS_TOGGLE) {
 				final String value = curData.manual.get(field.field());
 				boolean selection = false;
 				if (value != null && value.equals("true")) {
 					selection = true;
 				}
 				Button button = null;
-				if (field.equals(FIELD_CROP_T)) {
+				if (field.equals(Fields.FIELD_CROP_T)) {
 					button = buttonT;
-				} else if (field.equals(FIELD_CROP_R)) {
+				} else if (field.equals(Fields.FIELD_CROP_R)) {
 					button = buttonR;
-				} else if (field.equals(FIELD_CROP_B)) {
+				} else if (field.equals(Fields.FIELD_CROP_B)) {
 					button = buttonB;
-				} else if (field.equals(FIELD_CROP_L)) {
+				} else if (field.equals(Fields.FIELD_CROP_L)) {
 					button = buttonL;
 				}
 				if (button != null) {
@@ -1371,7 +1127,17 @@ public class FaceSelector {
 
 	private static AnnotationData loadData(String path) {
 		AnnotationData data = new AnnotationData();
-		File file = new File(path + ".txt");
+		File file;
+		if (READ_IMAGE_SIZES) {
+			file = new File(path);
+			try {
+				BufferedImage bi = ImageIO.read(file);
+				data.imageSize = new Point(bi.getWidth(), bi.getHeight());
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		file = new File(path + ".txt");
 		data.manual = loadData2(file);
 		file = new File(path + ".AUTO.txt");
 		data.automatic = loadData2(file);
@@ -1437,19 +1203,19 @@ public class FaceSelector {
 					}
 					if (fromUI) {
 						Button button = null;
-						if (field.equals(FIELD_EYE_L.field())) {
-							if (getData(FIELD_HEAD_T) != null
-									&& getData(FIELD_HEAD_B) != null) {
+						if (field.equals(Fields.FIELD_EYE_L.field())) {
+							if (getData(Fields.FIELD_HEAD_T) != null
+									&& getData(Fields.FIELD_HEAD_B) != null) {
 								button = buttonL;
 							}
-						} else if (field.equals(FIELD_EYE_R.field())) {
-							if (getData(FIELD_HEAD_T) != null
-									&& getData(FIELD_HEAD_B) != null) {
+						} else if (field.equals(Fields.FIELD_EYE_R.field())) {
+							if (getData(Fields.FIELD_HEAD_T) != null
+									&& getData(Fields.FIELD_HEAD_B) != null) {
 								button = buttonR;
 							}
-						} else if (field.equals(FIELD_HEAD_T.field())) {
+						} else if (field.equals(Fields.FIELD_HEAD_T.field())) {
 							button = buttonT;
-						} else if (field.equals(FIELD_HEAD_B.field())) {
+						} else if (field.equals(Fields.FIELD_HEAD_B.field())) {
 							button = buttonB;
 						}
 						if (button != null) {
@@ -1563,7 +1329,7 @@ public class FaceSelector {
 
 	private static boolean isAnnotated() {
 		boolean complete = true;
-		for (final Field f : FIELDS_COORD) {
+		for (final Field f : Fields.FIELDS_COORD) {
 			final String field = f.field();
 			if (!curData.manual.containsKey(field)) {
 				complete = false;
