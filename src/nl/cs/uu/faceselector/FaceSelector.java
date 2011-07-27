@@ -8,6 +8,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Map.Entry;
 
@@ -79,6 +80,7 @@ public class FaceSelector {
 
 	private static final boolean READ_IMAGE_SIZES = false;
 
+	private static LinkedList<String> subjects = new LinkedList<String>();
 	private static LinkedList<File> files = new LinkedList<File>();
 	private static LinkedList<File> excludedDirs = new LinkedList<File>();
 	private static AnnotationData curData = new AnnotationData();
@@ -92,7 +94,7 @@ public class FaceSelector {
 
 	protected static float scale;
 
-	private static Button buttonImageNumber;
+	private static Button buttonSubject, buttonImageNumber;
 	private static Button buttonT, buttonR, buttonB, buttonL;
 	private static Label[] label1;
 	private static ProgressLabel[] label2;
@@ -106,12 +108,15 @@ public class FaceSelector {
 
 	private static double frameSize = 0;
 
+	private static File directory;
+
 	/**
 	 * Creates and displays the {@link FaceSelector} shell.
 	 * 
 	 * @param args
 	 */
 	public static void main(final String[] args) {
+
 		display = new Display();
 		shell = new Shell(display);
 
@@ -264,46 +269,6 @@ public class FaceSelector {
 			}
 		});
 
-		String msg = "Finding unannotated files... ";
-		if (DEBUG) {
-			System.out.println(msg);
-		} else {
-			System.out.print(msg);
-		}
-		final File path = new File(PATH);
-		onlyIncomplete = true;
-		listFiles(path);
-		onlyIncomplete = false;
-		String excludedDirs = "";
-		if (FaceSelector.excludedDirs.size() > 0) {
-			excludedDirs = " (" + FaceSelector.excludedDirs.size()
-					+ " excluded directories)";
-		}
-		System.out.println(FaceSelector.files.size() + " file(s)"
-				+ excludedDirs);
-
-		if (files.size() > 0) {
-			final int result = showMessage(
-					SWT.YES | SWT.NO | SWT.ICON_QUESTION,
-					"Would you like to display only unannotated files?");
-			if (result == SWT.YES) {
-				onlyIncomplete = true;
-			}
-		}
-
-		if (!onlyIncomplete) {
-			files.clear();
-			curData.clear();
-			System.out.print("Collecting files... ");
-			listFiles(path);
-		}
-		if (files.size() == 0) {
-			fatal("No images found in path:\n\t" + PATH);
-		} else {
-			System.out.println(FaceSelector.files.size() + " file(s)"
-					+ excludedDirs);
-		}
-
 		final SelectionListener croppedListener = new SelectionListener() {
 			@Override
 			public void widgetSelected(final SelectionEvent e) {
@@ -371,17 +336,63 @@ public class FaceSelector {
 				imgControl.setLayout(rowLayout);
 			}
 			imgControl.setLayoutData(fd);
-			buttonImageNumber = new Button(imgControl, SWT.NORMAL);
+			buttonSubject = new Button(imgControl, SWT.NORMAL);
 			if (IMAGE_CONTROL_VERTICAL) {
 				fd = new FormData();
 				fd.left = new FormAttachment(0, 0);
 				fd.right = new FormAttachment(20, 0);
 				fd.bottom = new FormAttachment(100, -5);
-				buttonImageNumber.setLayoutData(fd);
+				buttonSubject.setLayoutData(fd);
 			} else {
 				RowData rd = new RowData();
 				rd.width = width;
-				buttonImageNumber.setLayoutData(rd);
+				buttonSubject.setLayoutData(rd);
+			}
+			buttonSubject.setAlignment(SWT.CENTER);
+			buttonSubject.addSelectionListener(new SelectionListener() {
+				@Override
+				public void widgetSelected(SelectionEvent e) {
+					final Shell dialog = new Shell(shell, SWT.DIALOG_TRIM
+							| SWT.APPLICATION_MODAL);
+					RowLayout layout = new RowLayout();
+					layout.fill = true;
+					layout.marginHeight = layout.marginWidth = 10;
+					dialog.setLayout(layout);
+					dialog.setText("Go to image:");
+					final Text txt = new Text(dialog, SWT.BORDER);
+					final Button btn = new Button(dialog, SWT.PUSH);
+					btn.addSelectionListener(new SelectionListener() {
+						@Override
+						public void widgetSelected(SelectionEvent e) {
+							try {
+								int index = Integer.parseInt(txt.getText());
+								dialog.dispose();
+								setFile(index - 1, true);
+							} catch (NumberFormatException ex) {
+								System.out.println(ex);
+							}
+						}
+
+						@Override
+						public void widgetDefaultSelected(SelectionEvent e) {
+						}
+					});
+					btn.setText("Go");
+					dialog.setDefaultButton(btn);
+					dialog.pack();
+					dialog.open();
+				}
+
+				@Override
+				public void widgetDefaultSelected(SelectionEvent e) {
+				}
+			});
+			buttonImageNumber = new Button(imgControl, SWT.NORMAL);
+			if (IMAGE_CONTROL_VERTICAL) {
+				fd = new FormData();
+				fd.left = new FormAttachment(buttonSubject, 0, SWT.RIGHT);
+				fd.right = new FormAttachment(40, -1);
+				buttonImageNumber.setLayoutData(fd);
 			}
 			buttonImageNumber.setAlignment(SWT.CENTER);
 			buttonImageNumber.addSelectionListener(new SelectionListener() {
@@ -389,6 +400,8 @@ public class FaceSelector {
 				public void widgetSelected(SelectionEvent e) {
 					final Shell dialog = new Shell(shell, SWT.DIALOG_TRIM
 							| SWT.APPLICATION_MODAL);
+					dialog.setLocation(
+							shell.toDisplay(buttonImageNumber.getLocation()));
 					RowLayout layout = new RowLayout();
 					layout.fill = true;
 					layout.marginHeight = layout.marginWidth = 10;
@@ -713,10 +726,7 @@ public class FaceSelector {
 			});
 		}
 
-		setFile(0, false);
-
 		shell.addShellListener(new ShellListener() {
-
 			@Override
 			public void shellIconified(final ShellEvent arg0) {
 			}
@@ -749,12 +759,89 @@ public class FaceSelector {
 				+ EXPECTED_IMAGE_SIZE.y);
 
 		shell.open();
+
+		String msg = "Finding subjects... ";
+		if (DEBUG) {
+			System.out.println(msg);
+		} else {
+			System.out.print(msg);
+		}
+		directory = new File(PATH);
+
+		if (!directory.exists()) {
+			fatal("Path does not exist:", directory);
+		}
+		final File[] dirs = directory.listFiles();
+		for (final File dir : dirs) {
+			String name = dir.getName();
+			if (dir.isDirectory() && !name.startsWith(".")) {
+				File excludeFile = new File(dir, ".exclude");
+				if (excludeFile.exists()) {
+					excludedDirs.add(dir);
+					continue;
+				}
+				subjects.add(name);
+			}
+		}
+		System.out.println(FaceSelector.subjects.size() + " subject(s)"
+				+ listExcludedDirs());
+		if (subjects.size() == 0) {
+			fatal("No included directories in path:", directory);
+		}
+
+		System.out.print("Collecting files... ");
+		Iterator<String> iterator = subjects.iterator();
+		while (iterator.hasNext()) {
+			String subject = iterator.next();
+			setSubject(subject);
+			if (files.size() > 0) {
+				break;
+			} else {
+				System.out.print("ignoring empty subject [" + subject
+						+ "]\n                    ");
+				iterator.remove();
+			}
+		}
+		if (files.size() == 0) {
+			fatal("No images found in any of the " + subjects.size()
+					+ " subject directories:", directory);
+		} else {
+			System.out.println(FaceSelector.files.size() + " file(s)"
+					+ listExcludedDirs());
+		}
+
+		setFile(0, false);
+
 		while (!shell.isDisposed()) {
 			if (!display.readAndDispatch()) {
 				display.sleep();
 			}
 		}
 		display.dispose();
+	}
+
+	private static String listExcludedDirs() {
+		if (excludedDirs.size() > 0) {
+			return ", excluding: " + excludedDirs;
+		}
+		return "";
+	}
+
+	private static void setSubject(int index) {
+		setSubject(subjects.get(index));
+	}
+
+	private static void setSubject(String subject) {
+		files.clear();
+		excludedDirs.clear();
+		curData.clear();
+
+		listFiles(subject);
+		String excludedDirs = "";
+		if (FaceSelector.excludedDirs.size() > 0) {
+			excludedDirs = " (" + FaceSelector.excludedDirs.size()
+					+ " excluded directories)";
+		}
 	}
 
 	protected static void drawPoint(final int type, final GC gc,
@@ -816,6 +903,7 @@ public class FaceSelector {
 			Face faceA = new Face(fileData.automatic, fileData.imageSize);
 			double similarity = faceM.similarity(faceA, fileData.manual,
 					threshold);
+			System.out.println(i + "\t" + similarity);
 			if ((faceA == null && faceM != null) || similarity < threshold) {
 				falsePositives++;
 			} else {
@@ -879,12 +967,6 @@ public class FaceSelector {
 		stdDevVariance /= truePositives - (falsePositives + 1);
 		double stdDev = Math.sqrt(stdDevVariance);
 
-		if (true) {
-			System.out.println("stdDev1: " + stdDev);
-			System.out.println("stdDev2: " + MatrixMath.stdDev(errors));
-			return "";
-		}
-
 		String msg = "Annotated: " + count + " of " + files.size();
 		msg += "\nAutomatic annotation accuracy threshold: " + threshold;
 		msg += "\nAutomatic annotation accuracy: " + similarityMean;
@@ -912,9 +994,10 @@ public class FaceSelector {
 			msg += "\n" + statistic.name() + ": " + stats[i];
 			i++;
 		}
+		System.out.println("\nthres\tsimilarity mean\tfalse positives");
 		String msg2 = threshold + "\t" + similarityMean + "\t"
 				+ falsePosRate;
-		System.out.println(msg2.replace('.', ','));
+		System.out.println(msg2.replace('.', ',') + "\n");
 		return msg;
 	}
 
@@ -957,6 +1040,16 @@ public class FaceSelector {
 
 	private static void fatal(final Exception e) {
 		fatal(e.getMessage());
+	}
+
+	private static void fatal(final String message, final File directory) {
+		String path;
+		try {
+			path = directory.getCanonicalPath();
+		} catch (final IOException e) {
+			path = directory.getAbsolutePath();
+		}
+		fatal(message + "\n\n    " + path);
 	}
 
 	private static void fatal(final String message) {
@@ -1282,15 +1375,14 @@ public class FaceSelector {
 		}
 	}
 
-	private static void listFiles(final File directory) {
+	private static void listFiles(final String subject) {
+		File dir = new File(directory, subject);
+		listFiles(dir, 1);
+	}
+
+	private static void listFiles(final File directory, int depth) {
 		if (!directory.exists()) {
-			String path;
-			try {
-				path = directory.getCanonicalPath();
-			} catch (final IOException e) {
-				path = directory.getAbsolutePath();
-			}
-			fatal("Path does not exist:\n\n    " + path);
+			fatal("Path does not exist:", directory);
 		}
 		File excludeFile = new File(directory, ".exclude");
 		if (excludeFile.exists()) {
@@ -1299,8 +1391,11 @@ public class FaceSelector {
 		}
 		final File[] files = directory.listFiles();
 		for (final File file : files) {
+			if (file.getName().startsWith(".")) {
+				continue;
+			}
 			if (file.isDirectory()) {
-				listFiles(file);
+				listFiles(file, depth + 1);
 			} else if (file.isFile()) {
 				boolean ok = false;
 				for (final String ext : EXTENSIONS) {

@@ -1,5 +1,6 @@
 package nl.cs.uu.faceselector;
 
+import java.text.NumberFormat;
 import java.util.LinkedList;
 
 import org.eclipse.swt.graphics.Point;
@@ -137,20 +138,44 @@ public class MatrixMath {
 
 	public static double stdDev(LinkedList<Double> distances) {
 		int count = distances.size();
+		double mean = mean(distances);
 		double distanceSum = 0;
 		for (double distance : distances) {
-			distanceSum += distance;
+			distanceSum += Math.pow(distance - mean, 2);
 		}
-		double distanceMean = 0;
-		if (count > 0) {
-			distanceMean = distanceSum / count;
-		}
-		double distanceVariance = 0;
-		for (double distance : distances) {
-			distanceVariance += Math.pow(distance - distanceMean, 2);
-		}
-		distanceVariance /= count - 1;
-		return Math.sqrt(distanceVariance);
+		return Math.sqrt(distanceSum / count);
 	}
 
+	public static double mean(LinkedList<Double> distances) {
+		int count = distances.size();
+		double sum = 0;
+		for (double distance : distances) {
+			sum += distance;
+		}
+		double mean = 0;
+		if (count > 0) {
+			mean = sum / count;
+		}
+		return mean;
+	}
+
+	public static double gaussian(double x, double mu, double sigma) {
+		return Math.exp(-Math.pow(x - mu, 2) / (2 * Math.pow(sigma, 2)));
+	}
+
+	public static double gaussianFilter(double x, double mu, double sigma) {
+		return 1.0 / (sigma * Math.sqrt(2.0 * Math.PI))
+				* gaussian(x, mu, sigma);
+	}
+
+	public static String format(double val) {
+		NumberFormat nf = NumberFormat.getInstance();
+		nf.setMaximumFractionDigits(16);
+		nf.setMinimumFractionDigits(16);
+		String res = nf.format(val);
+		if (val >= 0) {
+			return " " + res;
+		}
+		return res;
+	}
 }

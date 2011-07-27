@@ -213,7 +213,7 @@ public class Face {
 			System.out.println("sigma_" + i + ": " + sigma);
 			*/
 			double val = (-Math.pow(distance(i, this, other), 2))
-					/ Math.pow(sigma, 2);
+					/ (2 * Math.pow(sigma, 2));
 			System.out.println(i + ": -(" + distance(i, this, other) + ")^2 / "
 					+ sigma + "^2 = " + val);
 			if (i > 0) {
