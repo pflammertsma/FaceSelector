@@ -180,8 +180,7 @@ public class FaceSelector {
 								files.remove(curFile);
 								setFile(curFile, true);
 							} else {
-								showMessage(
-										SWT.ERROR,
+								showMessage(SWT.ERROR,
 										"Failed to rename the following file:\n\n    "
 												+ file);
 							}
@@ -358,8 +357,10 @@ public class FaceSelector {
 					layout.fill = true;
 					layout.marginHeight = layout.marginWidth = 10;
 					dialog.setLayout(layout);
-					dialog.setText("Go to image:");
+					dialog.setText("Set subject (0-" + subjects.size() + "):");
 					final Text txt = new Text(dialog, SWT.BORDER);
+					RowData rd = new RowData(100, 10);
+					txt.setLayoutData(rd);
 					final Button btn = new Button(dialog, SWT.PUSH);
 					btn.addSelectionListener(new SelectionListener() {
 						@Override
@@ -367,7 +368,7 @@ public class FaceSelector {
 							try {
 								int index = Integer.parseInt(txt.getText());
 								dialog.dispose();
-								setFile(index - 1, true);
+								setSubject(index - 1);
 							} catch (NumberFormatException ex) {
 								System.out.println(ex);
 							}
@@ -400,14 +401,16 @@ public class FaceSelector {
 				public void widgetSelected(SelectionEvent e) {
 					final Shell dialog = new Shell(shell, SWT.DIALOG_TRIM
 							| SWT.APPLICATION_MODAL);
-					dialog.setLocation(
-							shell.toDisplay(buttonImageNumber.getLocation()));
+					dialog.setLocation(shell.toDisplay(buttonImageNumber
+							.getLocation()));
 					RowLayout layout = new RowLayout();
 					layout.fill = true;
 					layout.marginHeight = layout.marginWidth = 10;
 					dialog.setLayout(layout);
 					dialog.setText("Go to image:");
 					final Text txt = new Text(dialog, SWT.BORDER);
+					RowData rd = new RowData(100, 10);
+					txt.setLayoutData(rd);
 					final Button btn = new Button(dialog, SWT.PUSH);
 					btn.addSelectionListener(new SelectionListener() {
 						@Override
@@ -623,8 +626,7 @@ public class FaceSelector {
 						e.gc.drawImage(curImg, 0, 0, srcWidth, srcHeight, 0, 0,
 								destWidth, destHeight);
 						// Calculate scale
-						scale = (((float) destWidth / (float) srcWidth) +
-								((float) destHeight / (float) srcHeight)) / 2;
+						scale = (((float) destWidth / (float) srcWidth) + ((float) destHeight / (float) srcHeight)) / 2;
 						Transform tr = new Transform(e.display);
 						tr.scale(scale, scale);
 						e.gc.setTransform(tr);
@@ -692,11 +694,9 @@ public class FaceSelector {
 									(int) faceM.height);
 						}
 						System.out.println("\nsimilarity1: "
-								+ faceM.similarity(faceA,
-										curData.manual));
+								+ faceM.similarity(faceA, curData.manual));
 						System.out.println("similarity2: "
-								+ faceM.similarity2(faceA,
-										curData.manual));
+								+ faceM.similarity2(faceA, curData.manual));
 						// Draw lines
 						e.gc.setAlpha(255);
 						tr = new Transform(e.display);
@@ -705,9 +705,9 @@ public class FaceSelector {
 						e.gc.setLineWidth(1);
 						for (int j = 0; j < Fields.LINES.length; j++) {
 							if (l[j] != null && l[j][0] != null
-										&& l[j][1] != null) {
-								e.gc.drawLine(l[j][0].x, l[j][0].y,
-											l[j][1].x, l[j][1].y);
+									&& l[j][1] != null) {
+								e.gc.drawLine(l[j][0].x, l[j][0].y, l[j][1].x,
+										l[j][1].y);
 							}
 						}
 						// Draw coordinate fields
@@ -828,13 +828,19 @@ public class FaceSelector {
 	}
 
 	private static void setSubject(int index) {
-		setSubject(subjects.get(index));
+		try {
+			setSubject(subjects.get(index));
+		} catch (IndexOutOfBoundsException ex) {
+			System.out.println(ex);
+		}
 	}
 
 	private static void setSubject(String subject) {
 		files.clear();
 		excludedDirs.clear();
 		curData.clear();
+
+		buttonSubject.setText(subject);
 
 		listFiles(subject);
 		String excludedDirs = "";
@@ -844,8 +850,8 @@ public class FaceSelector {
 		}
 	}
 
-	protected static void drawPoint(final int type, final GC gc,
-			final Point p, final int radius, final int size) {
+	protected static void drawPoint(final int type, final GC gc, final Point p,
+			final int radius, final int size) {
 		gc.setAlpha(128);
 		switch (type) {
 		default:
@@ -870,13 +876,12 @@ public class FaceSelector {
 	}
 
 	protected static void showROC() {
-		/* 
+		/*
 		 * We're just changing the matching threshold; this is not an ROC
 		 * 
-		for (int threshold = 0; threshold <= 100; threshold += 5) {
-			showStatistics(((double) threshold) / 100);
-		}
-		*/
+		 * for (int threshold = 0; threshold <= 100; threshold += 5) {
+		 * showStatistics(((double) threshold) / 100); }
+		 */
 	}
 
 	protected static void showStatistics() {
@@ -972,8 +977,7 @@ public class FaceSelector {
 		msg += "\nAutomatic annotation accuracy: " + similarityMean;
 		msg += "\nAutomatic annotation std. dev.: " + stdDev;
 		double falsePosRate = (double) falsePositives / (double) count;
-		msg += "\nAutomatic annotation false positives: "
-				+ falsePosRate + " ("
+		msg += "\nAutomatic annotation false positives: " + falsePosRate + " ("
 				+ falsePositives + ")";
 		int j = 0;
 		for (final Field field : Fields.FIELDS_COORD) {
@@ -995,8 +999,7 @@ public class FaceSelector {
 			i++;
 		}
 		System.out.println("\nthres\tsimilarity mean\tfalse positives");
-		String msg2 = threshold + "\t" + similarityMean + "\t"
-				+ falsePosRate;
+		String msg2 = threshold + "\t" + similarityMean + "\t" + falsePosRate;
 		System.out.println(msg2.replace('.', ',') + "\n");
 		return msg;
 	}
@@ -1020,17 +1023,13 @@ public class FaceSelector {
 	}
 
 	protected static void showControls() {
-		showMessage(SWT.ICON_INFORMATION,
-				"PgUp, Up, Left\tPrevious image\n" +
-						"PgDn, Down, Right\tNext image\n" +
-						"Shift + Left\tMove points 1px left\n" +
-						"Shift + Up\tMove points 1px up\n" +
-						"Shift + Right\tMove points 1px right\n" +
-						"Shift + Down\tMove points 1px down\n" +
-						"[\tRotate left\n" +
-						"]\tRotate right\n" +
-						"+\tScale up\n" +
-						"-\tScale down");
+		showMessage(SWT.ICON_INFORMATION, "PgUp, Up, Left\tPrevious image\n"
+				+ "PgDn, Down, Right\tNext image\n"
+				+ "Shift + Left\tMove points 1px left\n"
+				+ "Shift + Up\tMove points 1px up\n"
+				+ "Shift + Right\tMove points 1px right\n"
+				+ "Shift + Down\tMove points 1px down\n" + "[\tRotate left\n"
+				+ "]\tRotate right\n" + "+\tScale up\n" + "-\tScale down");
 	}
 
 	private static void setButton(final Button button, final Field field) {
@@ -1244,7 +1243,6 @@ public class FaceSelector {
 				final FileReader input = new FileReader(file);
 				final BufferedReader bufRead = new BufferedReader(input);
 				String line;
-				final int count = 0;
 				int lineNo = 0;
 				while ((line = bufRead.readLine()) != null) {
 					lineNo++;
@@ -1260,7 +1258,7 @@ public class FaceSelector {
 						}
 						response.put(key, value);
 					} else {
-						System.err.println("Parse error on line " + count
+						System.err.println("Parse error on line " + lineNo
 								+ " of " + file);
 					}
 				}
