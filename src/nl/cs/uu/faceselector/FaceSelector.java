@@ -1231,7 +1231,7 @@ public class FaceSelector {
 		}
 		file = new File(path + ".txt");
 		data.manual = loadData2(file);
-		file = new File(path + ".AUTO.txt");
+		file = new File(path + ".AUTO.vj.txt");
 		data.automatic = loadData2(file);
 		return data;
 	}
