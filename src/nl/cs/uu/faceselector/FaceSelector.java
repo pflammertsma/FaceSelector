@@ -843,11 +843,6 @@ public class FaceSelector {
 		buttonSubject.setText(subject);
 
 		listFiles(subject);
-		String excludedDirs = "";
-		if (FaceSelector.excludedDirs.size() > 0) {
-			excludedDirs = " (" + FaceSelector.excludedDirs.size()
-					+ " excluded directories)";
-		}
 	}
 
 	protected static void drawPoint(final int type, final GC gc, final Point p,

@@ -68,12 +68,13 @@ public class Face {
 		// Get the face's bounding box
 		x = this.box.x + (double) this.box.width / 2;
 		y = this.box.y + (double) this.box.height / 2;
-		double half = this.width / 2;
+		double boxSquareSize = this.height;
+		double half = boxSquareSize / 2;
 		this.boxSquare = new Rectangle(
 				(int) (x - half),
 				(int) (y - half),
-				(int) this.width,
-				(int) this.width);
+				(int) boxSquareSize,
+				(int) boxSquareSize);
 	}
 
 	public double get(int index) {
