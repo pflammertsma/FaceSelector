@@ -10,8 +10,11 @@ public class Face {
 
 	public static final double THRESHOLD = 0.5;
 	public static final boolean BINARY_MATCHING = false;
+	public static final int MEASUREMENT_COUNT = 4;
 
 	private static final double GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
+
+	private static final int DEBUG = 0;
 
 	public Double rotation = null;
 	public Rectangle box = null, boxSquare = null;
@@ -85,6 +88,10 @@ public class Face {
 		if (imageSize == null) {
 			normalized = false;
 		}
+		if (index > MEASUREMENT_COUNT) {
+			throw new IndexOutOfBoundsException("Measurement index " + index
+					+ " does not exist");
+		}
 		switch (index) {
 		case 0:
 			if (normalized) {
@@ -97,11 +104,18 @@ public class Face {
 			}
 			return y;
 		case 2:
+		case 3:
+			double size = boxSquare.width;
+			if (normalized) {
+				return size / imageSize.x;
+			}
+			return size;
+		case 4:
 			if (normalized) {
 				return width / imageSize.x;
 			}
 			return width;
-		case 3:
+		case 5:
 			if (normalized) {
 				return height / imageSize.y;
 			}
@@ -181,42 +195,42 @@ public class Face {
 		return intersectionSize / boxSize;
 	}
 
-	public double similarity2(Face other,
-			HashMap<String, String> curData) {
+	public double similarity2(Face other) {
 		if (this.boxSquare == null || other.boxSquare == null) {
 			return 0;
 		}
 		LinkedList<Face> facesM = new LinkedList<Face>();
-		LinkedList<Face> facesA = new LinkedList<Face>();
+		LinkedList<LinkedList<Face>> facesA = new LinkedList<LinkedList<Face>>();
 		for (AnnotationData faceData : FaceSelector.getAllData()) {
 			facesM.add(new Face(faceData.manual, faceData.imageSize));
-			facesA.add(new Face(faceData.automatic, faceData.imageSize));
+			LinkedList<Face> facesA2 = new LinkedList<Face>();
+			for (String mode : FaceSelector.AUTOMATIC_MODES) {
+				if (faceData.automatic.containsKey(mode)) {
+					facesA2.add(new Face(faceData.automatic.get(mode),
+							faceData.imageSize));
+				}
+			}
+			facesA.add(facesA2);
 		}
 		double sum = 0;
 		String msg = "";
-		for (int i = 0; i < 3; i++) {
-			LinkedList<Double> distances = new LinkedList<Double>();
-			int count = facesM.size();
-			for (int j = 0; j < count; j++) {
-				Face faceM = facesM.get(j);
-				Face faceA = facesA.get(j);
-				if (faceM.boxSquare == null || faceA.boxSquare == null) {
-					continue;
-				} else {
-					double distance = distance(i, faceM, faceA);
-					distances.add(distance);
-				}
+		// Iterates through the different distance measures of the face (e.g. x,
+		// y, width, height, rotation)
+		for (int i = 0; i < MEASUREMENT_COUNT; i++) {
+			// Obtain the sigma from FaceSelector
+			double sigma = FaceSelector.getSigma(i, facesM, facesA);
+			if (DEBUG > 1) {
+				System.out.println("distance_" + i + ": " + this.get(i) + " - "
+						+ other.get(i) + " = " + distance(i, this, other));
+				System.out.println("sigma_" + i + ": " + sigma);
 			}
-			double sigma = MatrixMath.stdDev(distances);
-			/*
-			System.out.println("distance_" + i + ": " + this.get(i) + " - "
-					+ other.get(i) + " = " + distance(i, this, other));
-			System.out.println("sigma_" + i + ": " + sigma);
-			*/
 			double val = (-Math.pow(distance(i, this, other), 2))
 					/ (2 * Math.pow(sigma, 2));
-			System.out.println(i + ": -(" + distance(i, this, other) + ")^2 / "
-					+ sigma + "^2 = " + val);
+			if (DEBUG > 0) {
+				System.out.println(i + ": -(" + distance(i, this, other)
+						+ ")^2 / "
+						+ sigma + "^2 = " + val);
+			}
 			if (i > 0) {
 				msg += " + ";
 			}
@@ -224,11 +238,13 @@ public class Face {
 			sum += val;
 		}
 		double similarity = Math.exp(sum);
-		System.out.println("e^(" + msg + ") = " + similarity);
+		if (DEBUG > 0) {
+			System.out.println("e^(" + msg + ") = " + similarity);
+		}
 		return similarity;
 	}
 
-	private double distance(int i, Face face1, Face face2) {
+	public static double distance(int i, Face face1, Face face2) {
 		return face1.get(i) - face2.get(i);
 	}
 
@@ -254,6 +270,11 @@ public class Face {
 			}
 		}
 		return true;
+	}
+
+	@Override
+	public String toString() {
+		return "Face(" + x + ", " + y + "; " + width + " x " + height + ")";
 	}
 
 }

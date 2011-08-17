@@ -57,9 +57,13 @@ import org.eclipse.swt.widgets.Text;
 public class FaceSelector {
 
 	/**
-	 * Path to photographs
+	 * Path to stills
 	 */
-	private final static String PATH = "../Subjects/";
+	private final static String PATH_INPUT = "../Subjects/";
+	/**
+	 * Path to evaluation result files
+	 */
+	private final static String PATH_OUTPUT = "../Subjects-Analysis/log_files/";
 
 	/**
 	 * Valid file extensions for photographs
@@ -70,6 +74,12 @@ public class FaceSelector {
 	 * Show debug information
 	 */
 	public static final boolean DEBUG = false;
+
+	/**
+	 * Valid file extensions for photographs
+	 */
+	public static final String[] AUTOMATIC_MODES = new String[] { "vj", "vje",
+			"pfse", "cse" };
 
 	protected static final double CIRCLE_SIZE = 5.0;
 	protected static final int FONT_SIZE = (int) (CIRCLE_SIZE * 2);
@@ -94,13 +104,15 @@ public class FaceSelector {
 
 	protected static float scale;
 
-	private static Button buttonSubject, buttonImageNumber;
+	private static Button buttonSubject, buttonImageNumber, buttonMode;
 	private static Button buttonT, buttonR, buttonB, buttonL;
 	private static Label[] label1;
 	private static ProgressLabel[] label2;
 	private static ProgressLabel label3;
 
 	private static int currentLabel;
+	private static String currentMode;
+	private static String currentSubject;
 
 	private static boolean onlyIncomplete;
 	protected static Color color1, color2, color3, color4;
@@ -109,6 +121,9 @@ public class FaceSelector {
 	private static double frameSize = 0;
 
 	private static File directory;
+
+	private static boolean hadChange;
+	private static LinkedList<Double> sigma = new LinkedList<Double>();
 
 	/**
 	 * Creates and displays the {@link FaceSelector} shell.
@@ -240,11 +255,13 @@ public class FaceSelector {
 				case '[':
 					MatrixMath.rotate(curData, -0.5f
 							/ MatrixMath.RADIANS_TO_DEGREES);
+					hadChange = true;
 					imgBox.redraw();
 					break;
 				case ']':
 					MatrixMath.rotate(curData,
 							0.5f / MatrixMath.RADIANS_TO_DEGREES);
+					hadChange = true;
 					imgBox.redraw();
 					break;
 				case '-':
@@ -357,7 +374,8 @@ public class FaceSelector {
 					layout.fill = true;
 					layout.marginHeight = layout.marginWidth = 10;
 					dialog.setLayout(layout);
-					dialog.setText("Set subject (0-" + subjects.size() + "):");
+					dialog.setText("Set subject (0-" + (subjects.size() - 1)
+							+ "):");
 					final Text txt = new Text(dialog, SWT.BORDER);
 					RowData rd = new RowData(100, 10);
 					txt.setLayoutData(rd);
@@ -367,8 +385,8 @@ public class FaceSelector {
 						public void widgetSelected(SelectionEvent e) {
 							try {
 								int index = Integer.parseInt(txt.getText());
-								dialog.dispose();
 								setSubject(index - 1);
+								dialog.dispose();
 							} catch (NumberFormatException ex) {
 								System.out.println(ex);
 							}
@@ -388,10 +406,54 @@ public class FaceSelector {
 				public void widgetDefaultSelected(SelectionEvent e) {
 				}
 			});
-			buttonImageNumber = new Button(imgControl, SWT.NORMAL);
+			buttonMode = new Button(imgControl, SWT.NORMAL);
 			if (IMAGE_CONTROL_VERTICAL) {
 				fd = new FormData();
 				fd.left = new FormAttachment(buttonSubject, 0, SWT.RIGHT);
+				fd.right = new FormAttachment(40, -1);
+				buttonMode.setLayoutData(fd);
+			}
+			buttonMode.setAlignment(SWT.CENTER);
+			buttonMode.addSelectionListener(new SelectionListener() {
+				@Override
+				public void widgetSelected(SelectionEvent e) {
+					final Shell dialog = new Shell(shell, SWT.DIALOG_TRIM
+							| SWT.APPLICATION_MODAL);
+					RowLayout layout = new RowLayout();
+					layout.fill = true;
+					layout.marginHeight = layout.marginWidth = 10;
+					dialog.setLayout(layout);
+					dialog.setText("Set automatic annotation mode "
+							+ AUTOMATIC_MODES.toString() + ":");
+					final Text txt = new Text(dialog, SWT.BORDER);
+					RowData rd = new RowData(100, 10);
+					txt.setLayoutData(rd);
+					final Button btn = new Button(dialog, SWT.PUSH);
+					btn.addSelectionListener(new SelectionListener() {
+						@Override
+						public void widgetSelected(SelectionEvent e) {
+							setMode(txt.getText());
+							dialog.dispose();
+						}
+
+						@Override
+						public void widgetDefaultSelected(SelectionEvent e) {
+						}
+					});
+					btn.setText("Go");
+					dialog.setDefaultButton(btn);
+					dialog.pack();
+					dialog.open();
+				}
+
+				@Override
+				public void widgetDefaultSelected(SelectionEvent e) {
+				}
+			});
+			buttonImageNumber = new Button(imgControl, SWT.NORMAL);
+			if (IMAGE_CONTROL_VERTICAL) {
+				fd = new FormData();
+				fd.left = new FormAttachment(buttonMode, 0, SWT.RIGHT);
 				fd.right = new FormAttachment(40, -1);
 				buttonImageNumber.setLayoutData(fd);
 			}
@@ -417,8 +479,8 @@ public class FaceSelector {
 						public void widgetSelected(SelectionEvent e) {
 							try {
 								int index = Integer.parseInt(txt.getText());
-								dialog.dispose();
 								setFile(index - 1, true);
+								dialog.dispose();
 							} catch (NumberFormatException ex) {
 								System.out.println(ex);
 							}
@@ -541,6 +603,7 @@ public class FaceSelector {
 						if (data != null && data instanceof String) {
 							final String key = (String) data;
 							curData.manual.remove(key);
+							hadChange = true;
 						} else {
 							throw new RuntimeException(
 									"Field is not a string: " + data);
@@ -654,19 +717,26 @@ public class FaceSelector {
 							}
 							i++;
 						}
-						// Outline auto-annotated face, if applicable
-						Face faceA = new Face(curData.automatic,
-								curData.imageSize);
-						if (faceA.box != null && faceA.width > 0
-								&& faceA.height > 0) {
-							int x = faceA.box.x + faceA.box.width / 2;
-							int y = faceA.box.y + faceA.box.height / 2;
-							int half = (int) faceA.width / 2;
-							e.gc.drawRectangle(x - half, y - half,
-									(int) faceA.width, (int) faceA.width);
+						// Get manual annotation
+						Face faceM = new Face(curData.manual, curData.imageSize);
+						// Gather automatic annotations
+						for (String mode : FaceSelector.AUTOMATIC_MODES) {
+							if (curData.automatic.containsKey(mode)) {
+								// Outline auto-annotated face, if applicable
+								Face faceA = new Face(curData.automatic
+										.get(mode), curData.imageSize);
+								if (faceA.box != null && faceA.width > 0
+										&& faceA.height > 0) {
+									int x = faceA.box.x + faceA.box.width / 2;
+									int y = faceA.box.y + faceA.box.height / 2;
+									int half = (int) faceA.width / 2;
+									e.gc.drawRectangle(x - half, y - half,
+											(int) faceA.width,
+											(int) faceA.width);
+								}
+							}
 						}
 						// Outline face, if applicable
-						Face faceM = new Face(curData.manual, curData.imageSize);
 						if (faceM.rotation != null && faceM.box != null
 								&& faceM.width > 0 && faceM.height > 0) {
 							float degrees = new Float(faceM.rotation);
@@ -693,10 +763,6 @@ public class FaceSelector {
 									(int) -faceM.height / 2, (int) faceM.width,
 									(int) faceM.height);
 						}
-						System.out.println("\nsimilarity1: "
-								+ faceM.similarity(faceA, curData.manual));
-						System.out.println("similarity2: "
-								+ faceM.similarity2(faceA, curData.manual));
 						// Draw lines
 						e.gc.setAlpha(255);
 						tr = new Transform(e.display);
@@ -766,7 +832,7 @@ public class FaceSelector {
 		} else {
 			System.out.print(msg);
 		}
-		directory = new File(PATH);
+		directory = new File(PATH_INPUT);
 
 		if (!directory.exists()) {
 			fatal("Path does not exist:", directory);
@@ -811,6 +877,7 @@ public class FaceSelector {
 		}
 
 		setFile(0, false);
+		setMode(AUTOMATIC_MODES[0]);
 
 		while (!shell.isDisposed()) {
 			if (!display.readAndDispatch()) {
@@ -833,6 +900,17 @@ public class FaceSelector {
 		} catch (IndexOutOfBoundsException ex) {
 			System.out.println(ex);
 		}
+	}
+
+	private static void setMode(String mode) {
+		for (String otherMode : AUTOMATIC_MODES) {
+			if (mode.equals(otherMode)) {
+				currentMode = mode;
+				buttonMode.setText("Mode: " + mode);
+				return;
+			}
+		}
+		System.out.println("Mode " + mode + " is not recognized; ignored");
 	}
 
 	private static void setSubject(String subject) {
@@ -881,80 +959,119 @@ public class FaceSelector {
 
 	protected static void showStatistics() {
 		showROC();
-		String msg = showStatistics(Face.THRESHOLD);
+		String msg = "Failed collecting statistics";
+		try {
+			msg = showStatistics(Face.THRESHOLD);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
 		System.out.println(msg);
 		showMessage(SWT.ICON_INFORMATION, msg);
 	}
 
-	protected static String showStatistics(double threshold) {
+	protected static String showStatistics(double threshold) throws IOException {
 		final int cropped[] = new int[Fields.FIELDS_COORD.length];
 		final int rotation[] = new int[181];
 		final int stats[] = new int[Fields.STATISTICS.length];
 		int count = 0;
-		int i = 0;
 
 		double similaritySum = 0.0;
 		int falsePositives = 0, truePositives = 0;
 
 		LinkedList<Double> errors = new LinkedList<Double>();
-		for (final AnnotationData fileData : getAllData()) {
-			count++;
-			Face faceM = new Face(fileData.manual, fileData.imageSize);
-			Face faceA = new Face(fileData.automatic, fileData.imageSize);
-			double similarity = faceM.similarity(faceA, fileData.manual,
-					threshold);
-			System.out.println(i + "\t" + similarity);
-			if ((faceA == null && faceM != null) || similarity < threshold) {
-				falsePositives++;
-			} else {
-				errors.add(similarity);
-				similaritySum += similarity;
-				truePositives++;
+		for (String mode : AUTOMATIC_MODES) {
+			File file = new File(PATH_OUTPUT + currentSubject + "\\auto_"
+					+ mode + ".txt");
+			BufferedWriter bufferedWriter = null;
+			file.createNewFile();
+			if (!file.exists()) {
+				throw new IOException("Cannot write to:\n\t"
+						+ file.getAbsolutePath());
 			}
-			int j = 0;
-			for (final Field field : Fields.FIELDS_COORD) {
-				if (fileData.manual.containsKey(field.field())) {
-					final String key = fileData.manual.get(field.field());
-					if (key == null) {
-						cropped[j]++;
-					}
+			bufferedWriter = new BufferedWriter(new FileWriter(file));
+			System.out
+					.println("Similarities per frame for mode " + mode);
+
+			int frameNumber = 0;
+			for (final AnnotationData fileData : getAllData()) {
+				count++;
+				frameNumber++;
+				Face faceM = new Face(fileData.manual, fileData.imageSize);
+				Face faceA = null;
+				if (fileData.automatic.containsKey(mode)) {
+					faceA = new Face(fileData.automatic.get(mode),
+							fileData.imageSize);
 				}
-				j++;
-			}
-			final Face face = new Face(fileData.manual, fileData.imageSize,
-					true);
-			final Double angle = face.rotation;
-			int k = 0;
-			for (final Statistic statistic : Fields.STATISTICS) {
-				boolean valid = false;
-				if (statistic.all()) {
-					valid = true;
+				double similarity;
+				if (false) {
+					similarity = faceM.similarity(faceA, fileData.manual,
+							threshold);
+				} else {
+					similarity = faceM.similarity2(faceA);
 				}
-				j = 0;
-				for (final Field field : statistic.fields()) {
-					final String key = fileData.manual.get(field.field());
-					if (statistic.all() && key == null) {
-						valid = false;
-					} else if (!statistic.all() && key != null) {
-						valid = true;
+				String msg;
+				if (faceA.box == null) {
+					msg = frameNumber + "\t";
+				} else {
+					msg = frameNumber + "\t" + similarity;
+				}
+				System.out.println(msg);
+				bufferedWriter.write(msg + "\n");
+				if (!mode.equals(currentMode)) {
+					continue;
+				}
+				if ((faceA == null && faceM != null) || similarity < threshold) {
+					falsePositives++;
+				} else {
+					errors.add(similarity);
+					similaritySum += similarity;
+					truePositives++;
+				}
+				int j = 0;
+				for (final Field field : Fields.FIELDS_COORD) {
+					if (fileData.manual.containsKey(field.field())) {
+						final String key = fileData.manual.get(field.field());
+						if (key == null) {
+							cropped[j]++;
+						}
 					}
 					j++;
 				}
-				if (statistic.maxAngle() != null) {
-					if (angle == null || angle > statistic.maxAngle()) {
-						valid = false;
+				final Face face = new Face(fileData.manual, fileData.imageSize,
+						true);
+				final Double angle = face.rotation;
+				int k = 0;
+				for (final Statistic statistic : Fields.STATISTICS) {
+					boolean valid = false;
+					if (statistic.all()) {
+						valid = true;
 					}
+					j = 0;
+					for (final Field field : statistic.fields()) {
+						final String key = fileData.manual.get(field.field());
+						if (statistic.all() && key == null) {
+							valid = false;
+						} else if (!statistic.all() && key != null) {
+							valid = true;
+						}
+						j++;
+					}
+					if (statistic.maxAngle() != null) {
+						if (angle == null || angle > statistic.maxAngle()) {
+							valid = false;
+						}
+					}
+					if (valid) {
+						stats[k]++;
+					}
+					k++;
 				}
-				if (valid) {
-					stats[k]++;
+				if (angle != null) {
+					final int rot = (int) Math.round(angle);
+					rotation[rot]++;
 				}
-				k++;
 			}
-			if (angle != null) {
-				final int rot = (int) Math.round(angle);
-				rotation[rot]++;
-			}
-			i++;
+			bufferedWriter.close();
 		}
 		double similarityMean = 1.0;
 		if (truePositives > 0) {
@@ -981,6 +1098,7 @@ public class FaceSelector {
 			j++;
 		}
 		int sum = 0;
+		int i = 0;
 		for (i = rotation.length - 1; i >= 0; i--) {
 			sum += rotation[i];
 			if (rotation[i] > 0) {
@@ -1104,6 +1222,7 @@ public class FaceSelector {
 			if (data != null && data instanceof String) {
 				final String key = (String) data;
 				curData.manual.put(key, value);
+				hadChange = true;
 			} else {
 				throw new RuntimeException("Field is not a string: " + data);
 			}
@@ -1120,6 +1239,7 @@ public class FaceSelector {
 				value = "true";
 			}
 			curData.manual.put(key, value);
+			hadChange = true;
 		} else {
 			throw new RuntimeException("Button does not contain toggle data");
 		}
@@ -1135,6 +1255,7 @@ public class FaceSelector {
 				point.y += y;
 				value = point.x + "," + point.y;
 				curData.manual.put(field, value);
+				hadChange = true;
 			}
 		}
 		imgBox.redraw();
@@ -1161,6 +1282,23 @@ public class FaceSelector {
 		buttonImageNumber.setText("Image " + (curFile + 1) + " of "
 				+ files.size());
 		load();
+
+		// Print the similarities
+		System.out.println("\nindex " + (curFile + 1));
+		// Get manual annotation
+		Face faceM = new Face(curData.manual, curData.imageSize);
+		System.out.println("target: " + faceM + "; square=" + faceM.boxSquare);
+		// Gather automatic annotations
+		for (String mode : FaceSelector.AUTOMATIC_MODES) {
+			if (curData.automatic.containsKey(mode)) {
+				// Outline auto-annotated face, if applicable
+				Face faceA = new Face(curData.automatic
+						.get(mode), curData.imageSize);
+				System.out.println("similarity of " + mode
+						+ ": " + faceM.similarity2(faceA)
+						+ " with " + faceA);
+			}
+		}
 	}
 
 	private static AnnotationData getData(int i) throws Exception {
@@ -1226,8 +1364,12 @@ public class FaceSelector {
 		}
 		file = new File(path + ".txt");
 		data.manual = loadData2(file);
-		file = new File(path + ".AUTO.vj.txt");
-		data.automatic = loadData2(file);
+		for (String mode : AUTOMATIC_MODES) {
+			file = new File(path + ".AUTO." + mode + ".txt");
+			if (file.exists()) {
+				data.automatic.put(mode, loadData2(file));
+			}
+		}
 		return data;
 	}
 
@@ -1335,7 +1477,8 @@ public class FaceSelector {
 	}
 
 	private static void save() {
-		if (curFile >= 0) {
+		if (curFile >= 0 && hadChange) {
+			sigma = new LinkedList<Double>();
 			File file;
 			if (curData.manual.size() > 0) {
 				try {
@@ -1371,6 +1514,7 @@ public class FaceSelector {
 	private static void listFiles(final String subject) {
 		File dir = new File(directory, subject);
 		listFiles(dir, 1);
+		currentSubject = subject;
 	}
 
 	private static void listFiles(final File directory, int depth) {
@@ -1425,5 +1569,32 @@ public class FaceSelector {
 			}
 		}
 		return complete;
+	}
+
+	public static double getSigma(int i, LinkedList<Face> facesM,
+			LinkedList<LinkedList<Face>> facesA) {
+		if (sigma.size() <= i || sigma.get(i) == 0) {
+			for (int j = sigma.size(); j <= i; j++) {
+				sigma.add(0.0);
+			}
+			LinkedList<Double> distances = new LinkedList<Double>();
+			for (int j = 0; j < facesM.size(); j++) {
+				Face faceM = facesM.get(j);
+				if (faceM.boxSquare == null) {
+					continue;
+				}
+				for (int k = 0; k < facesA.get(j).size(); k++) {
+					Face faceA = facesA.get(j).get(k);
+					if (faceA.boxSquare == null) {
+						continue;
+					} else {
+						double distance = Face.distance(i, faceM, faceA);
+						distances.add(distance);
+					}
+				}
+			}
+			sigma.set(i, MatrixMath.stdDev(distances));
+		}
+		return sigma.get(i);
 	}
 }
