@@ -79,7 +79,7 @@ public class FaceSelector {
 	 * Valid file extensions for photographs
 	 */
 	public static final String[] AUTOMATIC_MODES = new String[] { "vj", "vje",
-			"pfse", "cse" };
+			"pfs", "pfse", "cse" };
 
 	protected static final double CIRCLE_SIZE = 5.0;
 	protected static final int FONT_SIZE = (int) (CIRCLE_SIZE * 2);
@@ -124,6 +124,7 @@ public class FaceSelector {
 
 	private static boolean hadChange;
 	private static LinkedList<Double> sigma = new LinkedList<Double>();
+	private static Thread statThread;
 
 	/**
 	 * Creates and displays the {@link FaceSelector} shell.
@@ -969,110 +970,68 @@ public class FaceSelector {
 		showMessage(SWT.ICON_INFORMATION, msg);
 	}
 
+	private static int cpuFrames;
+	private static int cpuProgress;
+
 	protected static String showStatistics(double threshold) throws IOException {
 		final int cropped[] = new int[Fields.FIELDS_COORD.length];
 		final int rotation[] = new int[181];
 		final int stats[] = new int[Fields.STATISTICS.length];
 		int count = 0;
 
-		double similaritySum = 0.0;
-		int falsePositives = 0, truePositives = 0;
+		final int total = files.size();
 
-		LinkedList<Double> errors = new LinkedList<Double>();
-		for (String mode : AUTOMATIC_MODES) {
-			File file = new File(PATH_OUTPUT + currentSubject + "\\auto_"
-					+ mode + ".txt");
-			BufferedWriter bufferedWriter = null;
-			file.createNewFile();
-			if (!file.exists()) {
-				throw new IOException("Cannot write to:\n\t"
-						+ file.getAbsolutePath());
+		for (final AnnotationData fileData : getAllData()) {
+			/*
+			similarity = faceM.similarity(faceA, fileData.manual,
+					threshold);
+			*/
+			int j = 0;
+			for (final Field field : Fields.FIELDS_COORD) {
+				if (fileData.manual.containsKey(field.field())) {
+					final String key = fileData.manual.get(field.field());
+					if (key == null) {
+						cropped[j]++;
+					}
+				}
+				j++;
 			}
-			bufferedWriter = new BufferedWriter(new FileWriter(file));
-			System.out
-					.println("Similarities per frame for mode " + mode);
-
-			int frameNumber = 0;
-			for (final AnnotationData fileData : getAllData()) {
-				count++;
-				frameNumber++;
-				Face faceM = new Face(fileData.manual, fileData.imageSize);
-				Face faceA = null;
-				if (fileData.automatic.containsKey(mode)) {
-					faceA = new Face(fileData.automatic.get(mode),
-							fileData.imageSize);
+			final Face face = new Face(fileData.manual, fileData.imageSize,
+					true);
+			final Double angle = face.rotation;
+			int k = 0;
+			for (final Statistic statistic : Fields.STATISTICS) {
+				boolean valid = false;
+				if (statistic.all()) {
+					valid = true;
 				}
-				double similarity;
-				if (false) {
-					similarity = faceM.similarity(faceA, fileData.manual,
-							threshold);
-				} else {
-					similarity = faceM.similarity2(faceA);
-				}
-				String msg;
-				if (faceA.box == null) {
-					msg = frameNumber + "\t";
-				} else {
-					msg = frameNumber + "\t" + similarity;
-				}
-				System.out.println(msg);
-				bufferedWriter.write(msg + "\n");
-				if (!mode.equals(currentMode)) {
-					continue;
-				}
-				if ((faceA == null && faceM != null) || similarity < threshold) {
-					falsePositives++;
-				} else {
-					errors.add(similarity);
-					similaritySum += similarity;
-					truePositives++;
-				}
-				int j = 0;
-				for (final Field field : Fields.FIELDS_COORD) {
-					if (fileData.manual.containsKey(field.field())) {
-						final String key = fileData.manual.get(field.field());
-						if (key == null) {
-							cropped[j]++;
-						}
+				j = 0;
+				for (final Field field : statistic.fields()) {
+					final String key = fileData.manual.get(field.field());
+					if (statistic.all() && key == null) {
+						valid = false;
+					} else if (!statistic.all() && key != null) {
+						valid = true;
 					}
 					j++;
 				}
-				final Face face = new Face(fileData.manual, fileData.imageSize,
-						true);
-				final Double angle = face.rotation;
-				int k = 0;
-				for (final Statistic statistic : Fields.STATISTICS) {
-					boolean valid = false;
-					if (statistic.all()) {
-						valid = true;
+				if (statistic.maxAngle() != null) {
+					if (angle == null || angle > statistic.maxAngle()) {
+						valid = false;
 					}
-					j = 0;
-					for (final Field field : statistic.fields()) {
-						final String key = fileData.manual.get(field.field());
-						if (statistic.all() && key == null) {
-							valid = false;
-						} else if (!statistic.all() && key != null) {
-							valid = true;
-						}
-						j++;
-					}
-					if (statistic.maxAngle() != null) {
-						if (angle == null || angle > statistic.maxAngle()) {
-							valid = false;
-						}
-					}
-					if (valid) {
-						stats[k]++;
-					}
-					k++;
 				}
-				if (angle != null) {
-					final int rot = (int) Math.round(angle);
-					rotation[rot]++;
+				if (valid) {
+					stats[k]++;
 				}
+				k++;
 			}
-			bufferedWriter.close();
+			if (angle != null) {
+				final int rot = (int) Math.round(angle);
+				rotation[rot]++;
+			}
 		}
+
+		/*
 		double similarityMean = 1.0;
 		if (truePositives > 0) {
 			similarityMean = similaritySum / truePositives;
@@ -1091,6 +1050,10 @@ public class FaceSelector {
 		double falsePosRate = (double) falsePositives / (double) count;
 		msg += "\nAutomatic annotation false positives: " + falsePosRate + " ("
 				+ falsePositives + ")";
+		*/
+
+		String msg = "Images: " + files.size();
+
 		int j = 0;
 		for (final Field field : Fields.FIELDS_COORD) {
 			msg += "\nCropped " + field.field() + ": " + cropped[j] + " of "
@@ -1111,10 +1074,107 @@ public class FaceSelector {
 			msg += "\n" + statistic.name() + ": " + stats[i];
 			i++;
 		}
+
+		System.out.println("Calculating accuracies...");
+		if (true) {
+			// Multi-threading
+			final int cpus = Runtime.getRuntime().availableProcessors();
+			final int totalWork = total * AUTOMATIC_MODES.length;
+			cpuProgress = cpuFrames = 0;
+			for (i = 0; i < cpus; i++) {
+				final int cpu = i;
+				new Thread() {
+					@Override
+					public void run() {
+						for (int j = cpu; j < AUTOMATIC_MODES.length; j += cpus) {
+							try {
+								getStatistics(AUTOMATIC_MODES[j],
+										new StatProgressListener() {
+											@Override
+											public void onFrame() {
+												cpuFrames++;
+												double progress = Math
+														.round(cpuFrames
+																/ (double) totalWork
+																* 100);
+												if (cpuProgress == progress) {
+													return;
+												}
+												cpuProgress = (int) progress;
+												System.out.println(cpuProgress
+														+ "%");
+											}
+										});
+							} catch (IOException e) {
+								e.printStackTrace();
+							}
+						}
+						System.out.println("CPU " + cpu + " finished");
+					}
+				}.start();
+			}
+		} else {
+			// Single (main) thread
+			for (String mode : AUTOMATIC_MODES) {
+				getStatistics(mode, new StatProgressListener() {
+					@Override
+					public void onFrame() {
+						// TODO
+					}
+				});
+			}
+		}
+
+		/*
 		System.out.println("\nthres\tsimilarity mean\tfalse positives");
 		String msg2 = threshold + "\t" + similarityMean + "\t" + falsePosRate;
 		System.out.println(msg2.replace('.', ',') + "\n");
+		*/
 		return msg;
+	}
+
+	private static void getStatistics(String mode, StatProgressListener listener)
+			throws IOException {
+		File file = new File(PATH_OUTPUT + currentSubject + "\\auto_"
+				+ mode + ".txt");
+		BufferedWriter bufferedWriter = null;
+		file.createNewFile();
+		if (!file.exists()) {
+			throw new IOException("Cannot write to:\n\t"
+					+ file.getAbsolutePath());
+		}
+		bufferedWriter = new BufferedWriter(new FileWriter(file));
+		System.out
+				.println("Similarities per frame for mode " + mode);
+
+		LinkedList<AnnotationData> data = getAllData();
+		int totalFrames = data.size();
+		int frameNumber = 0;
+		for (final AnnotationData fileData : data) {
+			frameNumber++;
+			Face faceM = new Face(fileData.manual, fileData.imageSize);
+			Face faceA = null;
+			if (fileData.automatic.containsKey(mode)) {
+				faceA = new Face(fileData.automatic.get(mode),
+						fileData.imageSize);
+			}
+			double similarity;
+			similarity = faceM.similarity2(faceA);
+			String msg;
+			if (faceA.box == null) {
+				msg = frameNumber + "\t";
+			} else {
+				msg = frameNumber + "\t" + similarity;
+			}
+			listener.onFrame();
+			// listener.onProgress((double) frameNumber / (double) totalFrames);
+			// System.out.println(msg);
+			bufferedWriter.write(msg + "\n");
+			if (!mode.equals(currentMode)) {
+				continue;
+			}
+		}
+		bufferedWriter.close();
 	}
 
 	public static LinkedList<AnnotationData> getAllData() {
@@ -1283,22 +1343,42 @@ public class FaceSelector {
 				+ files.size());
 		load();
 
-		// Print the similarities
-		System.out.println("\nindex " + (curFile + 1));
-		// Get manual annotation
-		Face faceM = new Face(curData.manual, curData.imageSize);
-		System.out.println("target: " + faceM + "; square=" + faceM.boxSquare);
-		// Gather automatic annotations
-		for (String mode : FaceSelector.AUTOMATIC_MODES) {
-			if (curData.automatic.containsKey(mode)) {
-				// Outline auto-annotated face, if applicable
-				Face faceA = new Face(curData.automatic
-						.get(mode), curData.imageSize);
-				System.out.println("similarity of " + mode
-						+ ": " + faceM.similarity2(faceA)
-						+ " with " + faceA);
-			}
+		if (statThread != null) {
+			statThread.interrupt();
 		}
+		statThread = new Thread() {
+			@Override
+			public void run() {
+				// Just some shared object to synchronize over
+				synchronized (buttonImageNumber) {
+					if (isInterrupted()) {
+						return;
+					}
+					// Print the similarities
+					System.out.println("\ncomputing similarity of #"
+							+ (curFile + 1));
+					// Get manual annotation
+					Face faceM = new Face(curData.manual, curData.imageSize);
+					System.out.println("target: " + faceM + "; square="
+							+ faceM.boxSquare);
+					// Gather automatic annotations
+					for (String mode : FaceSelector.AUTOMATIC_MODES) {
+						if (isInterrupted()) {
+							return;
+						}
+						if (curData.automatic.containsKey(mode)) {
+							// Outline auto-annotated face, if applicable
+							Face faceA = new Face(curData.automatic
+									.get(mode), curData.imageSize);
+							System.out.println("similarity of " + mode
+									+ ": " + faceM.similarity2(faceA)
+									+ " with " + faceA);
+						}
+					}
+				}
+			}
+		};
+		statThread.start();
 	}
 
 	private static AnnotationData getData(int i) throws Exception {
