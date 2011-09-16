@@ -59,7 +59,7 @@ public class Face {
 			if (this.width == 0) {
 				this.width = this.height / GOLDEN_RATIO;
 			}
-			final Point2D pA = new Point2D(0.0, 1.0);
+			final Point2D pA = new Point2D(0.0, -1.0);
 			final Point2D pB = MatrixMath.norm(new Point2D(p3.x - p4.x, p3.y
 					- p4.y));
 			final double radians = Math.acos(MatrixMath.dot(pA, pB));
@@ -67,6 +67,7 @@ public class Face {
 			if (absolute) {
 				this.rotation = Math.abs(this.rotation);
 			}
+			System.out.println("radians " + radians + " --> " + rotation);
 		}
 		// Get the face's bounding box
 		x = this.box.x + (double) this.box.width / 2;

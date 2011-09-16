@@ -999,6 +999,7 @@ public class FaceSelector {
 			final Face face = new Face(fileData.manual, fileData.imageSize,
 					true);
 			final Double angle = face.rotation;
+			System.out.println("rotation " + angle);
 			int k = 0;
 			for (final Statistic statistic : Fields.STATISTICS) {
 				boolean valid = false;
