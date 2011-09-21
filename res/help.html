@@ -1,0 +1,146 @@
+<html>
+<head>
+  <style>
+    body {font:12px Tahoma; margin:5px; min-width:200px;}
+    h1, h2, h3, p {margin:5px 0;}
+    h1 img {vertical-align:bottom;}
+    ul, ol {margin:5px;}
+    h1 {font-size:18px;}
+    h2 {font-size:14px; margin-top:10px; margin-left:8px;}
+    h3 {font-size:12px; margin-left:16px;}
+    li {margin:5px 11px; clear:left; list-style:none;}
+    li div {float:left; width:58px;}
+    li img {vertical-align:bottom; width:16px; height:16px; float:left; margin-right:5px;}
+    li img.modifier {width:32px;}
+    li span {width:16px; height:16px; display:block; float:left; text-align:center; background-image:url(key.png); font-size:12px; margin-right:2px;}
+    li span.shift {padding-left:32px; background-image:url(key_shift.png)}
+  </style>
+</head>
+<body>
+  <h1><img src="help.png" /> Controls</h1>
+  <h2>Navigation</h2>
+  <ul>
+    <li>
+      <div><span>&#8592;</span></div>
+      <u>previous</u> frame
+    </li>
+    <li>
+      <div><span>&#8593;</span></div>
+      <u>previous</u> frame
+    </li>
+    <li>
+      <div><img src="key_pgup.png" /></div>
+      <u>previous</u> frame
+    </li>
+    <li>
+      <div><span>&#8594;</span></div>
+      <u>next</u> frame
+    </li>
+    <li>
+      <div><span>&#8595;</span></div>
+      <u>next</u> frame
+    </li>
+    <li>
+      <div><img src="key_pgdn.png" /></div>
+      <u>next</u> frame
+    </li>
+  </ul>
+  <h2>Annotating</h2>
+  <ul>
+    <li>
+      <div>DEL</div>
+      <u>exclude</u> frame
+    </li>
+    <li>
+      <div><span>C</span></div>
+      <u>copy</u> or <u>replace</u> annotations from previous frame
+    </li>
+    <li>
+      <div><span>R</span></div>
+      <u>revert</u> annotations from last save
+    </li>
+    <li>
+      <div><img src="key_ctrl.png" class="modifier" /><span>Z</span></div>
+      <u>revert</u> annotations from last save
+    </li>
+    <li>
+      <div><span>W</span></div>
+      mark frame as <u>cropped</u> on <u>top</u>
+    </li>
+    <li>
+      <div><span>A</span></div>
+      mark frame as <u>cropped</u> on <u>left</u>
+    </li>
+    <li>
+      <div><span>S</span></div>
+      mark frame as <u>cropped</u> on <u>bottom</u>
+    </li>
+    <li>
+      <div><span>D</span></div>
+      mark frame as <u>cropped</u> on <u>right</u>
+    </li>
+  </ul>
+  <h3>Initial</h3>
+  <ul>
+    <li>
+      <div><img src="mouse_lb.png" /></div>
+      <u>mark</u> the current feature
+    </li>
+    <li>
+      <div><img src="mouse_rb.png" /></div>
+      <u>skip</u> the current feature
+    </li>
+  </ul>
+  <h3>Revision</h3>
+  <ul>
+    <li>
+      <div><img src="mouse_lb.png" /></div>
+      <u>mark</u> the nearest feature
+    </li>
+    <li>
+      <div><img src="mouse_rb.png" /></div>
+      <u>remove</u> the nearest feature
+    </li>
+  </ul>
+  <h2>Modifying</h2>
+  <ul>
+    <li>
+      <div><img src="key_shift.png" class="modifier" /><img src="mouse_move_lb.png" /></div>
+      <u>move all</u> features
+    </li>
+    <li>
+      <div><span>[</span></div>
+      <u>rotate all</u> features <u>counter-clockwise</u>
+    </li>
+    <li>
+      <div><span>]</span></div>
+      <u>rotate all</u> features <u>clockwise</u>
+    </li>
+    <li>
+      <div><span>+</span></div>
+      <u>scale all</u> features <u>up</u>
+    </li>
+    <li>
+      <div><span>&minus;</span></div>
+      <u>scale all</u> features <u>down</u>
+    </li>
+    <li>
+      <div><img src="key_shift.png" class="modifier" /><span>&#8592;</span></div>
+      <u>move all</u> features <u>left</u>
+    </li>
+    <li>
+      <div><img src="key_shift.png" class="modifier" /><span>&#8593;</span></div>
+      <u>move all</u> features <u>up</u>
+    </li>
+    <li>
+      <div><img src="key_shift.png" class="modifier" /><span>&#8594;</span></div>
+      <u>move all</u> features <u>right</u>
+    </li>
+    <li>
+      <div><img src="key_shift.png" class="modifier" /><span>&#8595;</span></div>
+      <u>move all</u> features <u>down</u>
+    </li>
+  </ul>
+  <h2></h2>
+</body>
+</html>

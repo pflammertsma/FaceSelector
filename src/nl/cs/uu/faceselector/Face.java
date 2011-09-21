@@ -42,12 +42,15 @@ public class Face {
 		if (p1 != null && p2 != null) {
 			this.width = MatrixMath.distance(p1, p2) * 2;
 			final Point2D pA = new Point2D(1.0, 0.0);
-			final Point2D pB = MatrixMath.norm(new Point2D(p2.x - p1.x, p2.y
-					- p1.y));
+			final Point2D pB = MatrixMath.norm(new Point2D(p1.x - p2.x, p1.y
+					- p2.y));
 			final double radians = Math.acos(MatrixMath.dot(pA, pB));
-			this.rotation = radians * MatrixMath.RADIANS_TO_DEGREES;
+			rotation = radians * MatrixMath.RADIANS_TO_DEGREES;
+			if (pB.x < 0) {
+				rotation *= -1;
+			}
 			if (absolute) {
-				this.rotation = Math.abs(this.rotation);
+				rotation = Math.abs(this.rotation);
 			}
 		}
 		final Field headT = Fields.FIELD_HEAD_T;
@@ -59,15 +62,23 @@ public class Face {
 			if (this.width == 0) {
 				this.width = this.height / GOLDEN_RATIO;
 			}
+			System.out.println("rotation");
+			System.out.println(p3);
+			System.out.println(p4);
 			final Point2D pA = new Point2D(0.0, -1.0);
 			final Point2D pB = MatrixMath.norm(new Point2D(p3.x - p4.x, p3.y
 					- p4.y));
+			System.out.println(pB);
+			System.out.println(MatrixMath.dot(pA, pB));
 			final double radians = Math.acos(MatrixMath.dot(pA, pB));
-			this.rotation = radians * MatrixMath.RADIANS_TO_DEGREES;
-			if (absolute) {
-				this.rotation = Math.abs(this.rotation);
+			rotation = radians * MatrixMath.RADIANS_TO_DEGREES;
+			if (pB.x < 0) {
+				rotation *= -1;
 			}
-			System.out.println("radians " + radians + " --> " + rotation);
+			System.out.println(this.rotation);
+			if (absolute) {
+				rotation = Math.abs(this.rotation);
+			}
 		}
 		// Get the face's bounding box
 		x = this.box.x + (double) this.box.width / 2;

@@ -4,9 +4,13 @@ import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -15,8 +19,15 @@ import java.util.Map.Entry;
 import javax.imageio.ImageIO;
 
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.SWTError;
+import org.eclipse.swt.browser.Browser;
+import org.eclipse.swt.events.ControlEvent;
+import org.eclipse.swt.events.ControlListener;
+import org.eclipse.swt.events.DisposeEvent;
+import org.eclipse.swt.events.DisposeListener;
 import org.eclipse.swt.events.MouseEvent;
 import org.eclipse.swt.events.MouseListener;
+import org.eclipse.swt.events.MouseMoveListener;
 import org.eclipse.swt.events.PaintEvent;
 import org.eclipse.swt.events.PaintListener;
 import org.eclipse.swt.events.SelectionEvent;
@@ -43,6 +54,7 @@ import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
+import org.eclipse.swt.widgets.List;
 import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.MessageBox;
 import org.eclipse.swt.widgets.Shell;
@@ -98,6 +110,9 @@ public class FaceSelector {
 	private static Display display;
 	private static Shell shell;
 	private static Composite imgBox;
+	private static int imgRight, imgBottom;
+	private static Browser helpBox;
+	private static FormData helpBoxFD;
 
 	private static Image curImg;
 	private static int curFile = -1;
@@ -125,6 +140,7 @@ public class FaceSelector {
 	private static boolean hadChange;
 	private static LinkedList<Double> sigma = new LinkedList<Double>();
 	private static Thread statThread;
+	private static Point lastDrag;
 
 	/**
 	 * Creates and displays the {@link FaceSelector} shell.
@@ -196,7 +212,8 @@ public class FaceSelector {
 								files.remove(curFile);
 								setFile(curFile, true);
 							} else {
-								showMessage(SWT.ERROR,
+								showMessage(
+										SWT.ERROR,
 										"Failed to rename the following file:\n\n    "
 												+ file);
 							}
@@ -209,18 +226,12 @@ public class FaceSelector {
 					shell.close();
 					break;
 				case 'z':
-					if ((e.stateMask & SWT.CTRL) == 0) {
-						// Only CTRL+Z resets
-						break;
+					if ((e.stateMask & SWT.CTRL) != 0) {
+						revert();
 					}
+					break;
 				case 'r':
-					if (isAnnotated()) {
-						final int result = showMessage(SWT.YES | SWT.NO
-								| SWT.ICON_QUESTION, "Revert data from file?");
-						if (result == SWT.YES) {
-							load();
-						}
-					}
+					revert();
 					break;
 				case 'w':
 					// Crop TOP
@@ -249,6 +260,7 @@ public class FaceSelector {
 						}
 						curData = getData(curFile - 1);
 						imgBox.redraw();
+						updateCoords(true);
 					} catch (Exception ex) {
 						showMessage(SWT.ICON_ERROR, ex.getMessage());
 					}
@@ -256,13 +268,13 @@ public class FaceSelector {
 				case '[':
 					MatrixMath.rotate(curData, -0.5f
 							/ MatrixMath.RADIANS_TO_DEGREES);
-					hadChange = true;
+					updateCoords(true);
 					imgBox.redraw();
 					break;
 				case ']':
 					MatrixMath.rotate(curData,
 							0.5f / MatrixMath.RADIANS_TO_DEGREES);
-					hadChange = true;
+					updateCoords(true);
 					imgBox.redraw();
 					break;
 				case '-':
@@ -377,16 +389,23 @@ public class FaceSelector {
 					dialog.setLayout(layout);
 					dialog.setText("Set subject (0-" + (subjects.size() - 1)
 							+ "):");
-					final Text txt = new Text(dialog, SWT.BORDER);
-					RowData rd = new RowData(100, 10);
+					// final Text txt = new Text(dialog, SWT.BORDER);
+					// RowData rd = new RowData(100, 10);
+					final List txt = new List(dialog, SWT.BORDER | SWT.V_SCROLL);
+					RowData rd = new RowData(100, 100);
 					txt.setLayoutData(rd);
+					for (String subject : subjects) {
+						txt.add(subject);
+					}
 					final Button btn = new Button(dialog, SWT.PUSH);
 					btn.addSelectionListener(new SelectionListener() {
 						@Override
 						public void widgetSelected(SelectionEvent e) {
 							try {
-								int index = Integer.parseInt(txt.getText());
-								setSubject(index - 1);
+								// int index = Integer.parseInt(txt.getText()) -
+								// 1;
+								int index = txt.getSelectionIndex();
+								setSubject(index);
 								dialog.dispose();
 							} catch (NumberFormatException ex) {
 								System.out.println(ex);
@@ -511,12 +530,12 @@ public class FaceSelector {
 			}
 			button1.addSelectionListener(new SelectionListener() {
 				@Override
-				public void widgetSelected(final SelectionEvent arg0) {
+				public void widgetSelected(final SelectionEvent e) {
 					setFile(curFile - 1, true);
 				}
 
 				@Override
-				public void widgetDefaultSelected(final SelectionEvent arg0) {
+				public void widgetDefaultSelected(final SelectionEvent e) {
 				}
 			});
 			final Button button2 = new Button(imgControl, SWT.PUSH);
@@ -529,12 +548,12 @@ public class FaceSelector {
 			}
 			button2.addSelectionListener(new SelectionListener() {
 				@Override
-				public void widgetSelected(final SelectionEvent arg0) {
+				public void widgetSelected(final SelectionEvent e) {
 					setFile(curFile + 1, true);
 				}
 
 				@Override
-				public void widgetDefaultSelected(final SelectionEvent arg0) {
+				public void widgetDefaultSelected(final SelectionEvent e) {
 				}
 			});
 			final Button button3 = new Button(imgControl, SWT.PUSH);
@@ -547,12 +566,12 @@ public class FaceSelector {
 			}
 			button3.addSelectionListener(new SelectionListener() {
 				@Override
-				public void widgetSelected(final SelectionEvent arg0) {
+				public void widgetSelected(final SelectionEvent e) {
 					showStatistics();
 				}
 
 				@Override
-				public void widgetDefaultSelected(final SelectionEvent arg0) {
+				public void widgetDefaultSelected(final SelectionEvent e) {
 				}
 			});
 			final Button button4 = new Button(imgControl, SWT.PUSH);
@@ -565,12 +584,12 @@ public class FaceSelector {
 			}
 			button4.addSelectionListener(new SelectionListener() {
 				@Override
-				public void widgetSelected(final SelectionEvent arg0) {
+				public void widgetSelected(final SelectionEvent e) {
 					showControls();
 				}
 
 				@Override
-				public void widgetDefaultSelected(final SelectionEvent arg0) {
+				public void widgetDefaultSelected(final SelectionEvent e) {
 				}
 			});
 		}
@@ -604,7 +623,7 @@ public class FaceSelector {
 						if (data != null && data instanceof String) {
 							final String key = (String) data;
 							curData.manual.remove(key);
-							hadChange = true;
+							updateCoords(true);
 						} else {
 							throw new RuntimeException(
 									"Field is not a string: " + data);
@@ -634,6 +653,16 @@ public class FaceSelector {
 			data.horizontalSpan = 2;
 			label3 = new ProgressLabel(group2, false);
 			label3.setLayoutData(data);
+			group2.addControlListener(new ControlListener() {
+				@Override
+				public void controlResized(ControlEvent e) {
+					group2.layout(true);
+				}
+
+				@Override
+				public void controlMoved(ControlEvent e) {
+				}
+			});
 		}
 
 		imgBox = new Composite(shell, SWT.BORDER | SWT.DOUBLE_BUFFERED);
@@ -644,26 +673,40 @@ public class FaceSelector {
 			fd.left = new FormAttachment(0, 2);
 			fd.right = new FormAttachment(100, -2);
 			imgBox.setLayoutData(fd);
+			imgBox.setLayout(new FormLayout());
 			imgBox.addMouseListener(new MouseListener() {
 				@Override
 				public void mouseUp(final MouseEvent e) {
+					if ((e.stateMask & SWT.SHIFT) != 0
+							&& (e.stateMask & SWT.BUTTON1) != 0) {
+						updateCoords(true);
+					}
 				}
 
 				@Override
 				public void mouseDown(final MouseEvent e) {
 					imgBox.setFocus();
-					switch (e.button) {
-					case 1:
-						setCoord((int) (e.x / scale), (int) (e.y / scale));
-						break;
-					case 3:
-						setCoord(null);
-						break;
+					if ((e.stateMask & SWT.SHIFT) != 0) {
+						// Start dragging
+						lastDrag = new Point(e.x, e.y);
+					} else {
+						setCoord((int) (e.x / scale), (int) (e.y / scale),
+								e.button > 1);
 					}
 				}
 
 				@Override
 				public void mouseDoubleClick(final MouseEvent e) {
+				}
+			});
+			imgBox.addMouseMoveListener(new MouseMoveListener() {
+				@Override
+				public void mouseMove(MouseEvent e) {
+					if ((e.stateMask & SWT.SHIFT) != 0
+							&& (e.stateMask & SWT.BUTTON1) != 0) {
+						setOffset(e.x - lastDrag.x, e.y - lastDrag.y, false);
+						lastDrag = new Point(e.x, e.y);
+					}
 				}
 			});
 			imgBox.addPaintListener(new PaintListener() {
@@ -677,20 +720,21 @@ public class FaceSelector {
 						final int srcHeight = curImg.getBounds().height;
 						final double srcRatio = (double) srcWidth
 								/ (double) srcHeight;
-						int destWidth = imgBox.getSize().x;
-						int destHeight = imgBox.getSize().y;
-						final double destRatio = (double) destWidth
-								/ (double) destHeight;
+						imgRight = imgBox.getSize().x;
+						imgBottom = imgBox.getSize().y;
+						final double destRatio = (double) imgRight
+								/ (double) imgBottom;
 						if (destRatio < srcRatio) {
-							destHeight = (int) (destWidth / srcRatio);
+							imgBottom = (int) (imgRight / srcRatio);
 						} else {
-							destWidth = (int) (destHeight * srcRatio);
+							imgRight = (int) (imgBottom * srcRatio);
 						}
+						updateHelpBox();
 						// Draw frame
 						e.gc.drawImage(curImg, 0, 0, srcWidth, srcHeight, 0, 0,
-								destWidth, destHeight);
+								imgRight, imgBottom);
 						// Calculate scale
-						scale = (((float) destWidth / (float) srcWidth) + ((float) destHeight / (float) srcHeight)) / 2;
+						scale = (((float) imgRight / (float) srcWidth) + ((float) imgBottom / (float) srcHeight)) / 2;
 						Transform tr = new Transform(e.display);
 						tr.scale(scale, scale);
 						e.gc.setTransform(tr);
@@ -793,32 +837,112 @@ public class FaceSelector {
 			});
 		}
 
+		helpBoxFD = new FormData();
+		helpBoxFD.top = new FormAttachment(0, 0);
+		helpBoxFD.bottom = new FormAttachment(100, 0);
+		helpBoxFD.left = new FormAttachment(100, 0);
+		helpBoxFD.right = new FormAttachment(100, 0);
+		try {
+			helpBox = new Browser(imgBox, SWT.NONE);
+			helpBox.setLayoutData(helpBoxFD);
+			helpBox.setBackground(Display.getCurrent().getSystemColor(
+					SWT.COLOR_INFO_BACKGROUND));
+			File helpFile = new File("res/help.html");
+			if (false) {
+				helpBox.setUrl("about:blank");
+				String contents;
+				try {
+					contents = readFile(helpFile).replace("'", "\\'").replace(
+							"\n", "").replace("\r", "");
+				} catch (IOException e1) {
+					e1.printStackTrace();
+					contents = e1.getMessage();
+				}
+				helpBox.execute("document.open();document.write('" + contents +
+						"');document.close();");
+			} else {
+				helpBox.setRedraw(false);
+				helpBox.setVisible(false);
+				helpBox.getParent().redraw();
+				helpBox.setUrl(helpFile.toURI().toString());
+				display.asyncExec(new Runnable() {
+					@Override
+					public void run() {
+						try {
+							Thread.sleep(100);
+						} catch (InterruptedException e) {
+						}
+						helpBox.setRedraw(true);
+						helpBox.setVisible(true);
+					}
+				});
+			}
+		} catch (SWTError e) {
+			e.printStackTrace();
+		}
+
+		shell.addControlListener(new ControlListener() {
+			@Override
+			public void controlResized(ControlEvent e) {
+				updateHelpBox();
+			}
+
+			@Override
+			public void controlMoved(ControlEvent e) {
+			}
+		});
+
+		shell.addDisposeListener(new DisposeListener() {
+
+			@Override
+			public void widgetDisposed(DisposeEvent e) {
+				// TODO Auto-generated method stub
+
+			}
+		});
+
 		shell.addShellListener(new ShellListener() {
 			@Override
-			public void shellIconified(final ShellEvent arg0) {
+			public void shellIconified(final ShellEvent e) {
 			}
 
 			@Override
-			public void shellDeiconified(final ShellEvent arg0) {
+			public void shellDeiconified(final ShellEvent e) {
 			}
 
 			@Override
-			public void shellDeactivated(final ShellEvent arg0) {
+			public void shellDeactivated(final ShellEvent e) {
 			}
 
 			@Override
-			public void shellClosed(final ShellEvent arg0) {
-				save();
+			public void shellClosed(final ShellEvent e) {
+				if (helpBox.isVisible()) {
+					helpBox.setRedraw(false);
+					helpBox.setVisible(false);
+					helpBox.getParent().redraw();
+					display.asyncExec(new Runnable() {
+						@Override
+						public void run() {
+							try {
+								Thread.sleep(100);
+							} catch (InterruptedException e) {
+							}
+							shell.dispose();
+						}
+					});
+					save();
+					e.doit = false;
+				}
 			}
 
 			@Override
-			public void shellActivated(final ShellEvent arg0) {
+			public void shellActivated(final ShellEvent e) {
 			}
 		});
 
 		shell.setLayout(new FormLayout());
 		shell.setText(FaceSelector.class.getSimpleName());
-		final int width = IMAGE_CONTROL_VERTICAL ? 500 : 580;
+		final int width = IMAGE_CONTROL_VERTICAL ? 670 : 750;
 		final int height = 600;
 		shell.setSize(width, height);
 		shell.layout();
@@ -877,7 +1001,6 @@ public class FaceSelector {
 					+ listExcludedDirs());
 		}
 
-		setFile(0, false);
 		setMode(AUTOMATIC_MODES[0]);
 
 		while (!shell.isDisposed()) {
@@ -886,6 +1009,19 @@ public class FaceSelector {
 			}
 		}
 		display.dispose();
+	}
+
+	private static String readFile(File file) throws IOException {
+		FileInputStream stream = new FileInputStream(file);
+		try {
+			FileChannel fc = stream.getChannel();
+			MappedByteBuffer bb = fc.map(FileChannel.MapMode.READ_ONLY, 0,
+					fc.size());
+			// Instead of using default, pass in a decoder
+			return Charset.defaultCharset().decode(bb).toString();
+		} finally {
+			stream.close();
+		}
 	}
 
 	private static String listExcludedDirs() {
@@ -922,6 +1058,7 @@ public class FaceSelector {
 		buttonSubject.setText(subject);
 
 		listFiles(subject);
+		setFile(0, false);
 	}
 
 	protected static void drawPoint(final int type, final GC gc, final Point p,
@@ -1247,8 +1384,13 @@ public class FaceSelector {
 		return mg.open();
 	}
 
-	protected static void setCoord(final int x, final int y) {
-		final String value = x + "," + y;
+	protected static void setCoord(final int x, final int y, boolean clear) {
+		final String value;
+		if (clear) {
+			value = null;
+		} else {
+			value = x + "," + y;
+		}
 		if (currentLabel >= 0) {
 			setCoord(value);
 		} else {
@@ -1283,7 +1425,7 @@ public class FaceSelector {
 			if (data != null && data instanceof String) {
 				final String key = (String) data;
 				curData.manual.put(key, value);
-				hadChange = true;
+				updateCoords(true);
 			} else {
 				throw new RuntimeException("Field is not a string: " + data);
 			}
@@ -1307,6 +1449,10 @@ public class FaceSelector {
 	}
 
 	private static void setOffset(final int x, final int y) {
+		setOffset(x, y, true);
+	}
+
+	private static void setOffset(final int x, final int y, boolean updateUI) {
 		for (final Field f : Fields.FIELDS_COORD) {
 			final String field = f.field();
 			String value = curData.manual.get(field);
@@ -1316,7 +1462,9 @@ public class FaceSelector {
 				point.y += y;
 				value = point.x + "," + point.y;
 				curData.manual.put(field, value);
-				hadChange = true;
+				if (updateUI) {
+					updateCoords(true);
+				}
 			}
 		}
 		imgBox.redraw();
@@ -1425,6 +1573,7 @@ public class FaceSelector {
 				}
 			}
 			imgBox.redraw();
+			imgBox.setFocus();
 		} catch (final IOException e) {
 			throw new RuntimeException(e);
 		}
@@ -1495,6 +1644,9 @@ public class FaceSelector {
 
 	private static void updateCoords(final boolean fromUI) {
 		currentLabel = -1;
+		if (fromUI) {
+			hadChange = true;
+		}
 		int count = 0;
 		for (final ProgressLabel label : label2) {
 			final Object data = label.getData("field");
@@ -1677,5 +1829,21 @@ public class FaceSelector {
 			sigma.set(i, MatrixMath.stdDev(distances));
 		}
 		return sigma.get(i);
+	}
+
+	private static void revert() {
+		if (isAnnotated()) {
+			final int result = showMessage(SWT.YES | SWT.NO
+					| SWT.ICON_QUESTION, "Revert data from file?");
+			if (result == SWT.YES) {
+				load();
+			}
+		}
+	}
+
+	private static void updateHelpBox() {
+		helpBoxFD.left.numerator = 0;
+		helpBoxFD.left.offset = imgRight + 2;
+		helpBox.getParent().layout();
 	}
 }
