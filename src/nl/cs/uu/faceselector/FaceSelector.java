@@ -142,6 +142,11 @@ public class FaceSelector {
 	private static Thread statThread;
 	private static Point lastDrag;
 
+	private enum EditMode {
+		ANNOTATE,
+		MODIFY
+	}
+
 	/**
 	 * Creates and displays the {@link FaceSelector} shell.
 	 * 
@@ -151,6 +156,21 @@ public class FaceSelector {
 
 		display = new Display();
 		shell = new Shell(display);
+		shell.setImage(getImage("icon_16.png"));
+		new Thread() {
+			@Override
+			public void run() {
+				String[] files = { "icon_16.png", "icon_32.png", "icon_48.png",
+						"icon_64.png", "icon_256.png" };
+				final Image[] icons = getImages(files);
+				display.syncExec(new Runnable() {
+					@Override
+					public void run() {
+						shell.setImages(icons);
+					}
+				});
+			}
+		}.start();
 
 		color1 = new Color(display, 0, 0, 0);
 		color2 = new Color(display, 0, 255, 0);
@@ -164,31 +184,43 @@ public class FaceSelector {
 				Button button = null;
 				switch (e.keyCode) {
 				case SWT.ARROW_RIGHT:
-					if ((e.stateMask & SWT.SHIFT) > 0) {
+					switch (getMode(e)) {
+					case MODIFY:
 						setOffset(1, 0);
-					} else {
+						break;
+					case ANNOTATE:
 						setFile(curFile + 1, true);
+						break;
 					}
 					break;
 				case SWT.ARROW_LEFT:
-					if ((e.stateMask & SWT.SHIFT) > 0) {
+					switch (getMode(e)) {
+					case MODIFY:
 						setOffset(-1, 0);
-					} else {
+						break;
+					case ANNOTATE:
 						setFile(curFile - 1, true);
+						break;
 					}
 					break;
 				case SWT.ARROW_DOWN:
-					if ((e.stateMask & SWT.SHIFT) > 0) {
+					switch (getMode(e)) {
+					case MODIFY:
 						setOffset(0, 1);
-					} else {
+						break;
+					case ANNOTATE:
 						setFile(curFile + 1, true);
+						break;
 					}
 					break;
 				case SWT.ARROW_UP:
-					if ((e.stateMask & SWT.SHIFT) > 0) {
+					switch (getMode(e)) {
+					case MODIFY:
 						setOffset(0, -1);
-					} else {
+						break;
+					case ANNOTATE:
 						setFile(curFile - 1, true);
+						break;
 					}
 					break;
 				case SWT.PAGE_DOWN:
@@ -252,13 +284,23 @@ public class FaceSelector {
 				case 'c':
 					// Copy data from previous frame
 					try {
+						AnnotationData lastData = null;
+						for (int i = curFile - 1; i >= 0; i--) {
+							if (getData(i).manual.size() > 0) {
+								lastData = getData(i);
+								break;
+							}
+						}
+						if (lastData == null) {
+							throw new Exception("No previous data found");
+						}
 						if (isAnnotated()) {
 							if (showMessage(SWT.ICON_QUESTION | SWT.YES
 									| SWT.NO, "Discard current data?") == SWT.NO) {
 								break;
 							}
 						}
-						curData = getData(curFile - 1);
+						curData = lastData;
 						imgBox.redraw();
 						updateCoords(true);
 					} catch (Exception ex) {
@@ -290,11 +332,75 @@ public class FaceSelector {
 					MatrixMath.scale(curData, 1.01f);
 					imgBox.redraw();
 					break;
+				case 't':
+					AnnotationData lastData = null;
+					LinkedList<AnnotationData> data = new LinkedList<AnnotationData>();
+					int start = -1;
+					try {
+						for (int i = curFile - 1; i >= 0; i--) {
+							lastData = getData(i);
+							if (lastData.manual.size() > 0) {
+								start = i;
+								break;
+							}
+							data.add(lastData);
+						}
+						if (lastData == null || start < 0) {
+							throw new Exception(
+									"You can only tween feature movement between two annotated frames.");
+						}
+						for (final Field field : Fields.FIELDS_COORD) {
+							final String value1 = curData.manual.get(field
+									.field());
+							final String value2 = lastData.manual.get(field
+									.field());
+							if (value1 == null || value2 == null) {
+								throw new Exception(
+										"Both frames must be fully annotated; feature \""
+												+ field.name()
+												+ "\" is missing.");
+							}
+						}
+
+						// Skip the first and last frames (references)
+						int count = curFile - start;
+						for (final Field field : Fields.FIELDS_COORD) {
+							final String value1 = lastData.manual.get(field
+									.field());
+							final String value2 = curData.manual.get(field
+									.field());
+							Point2D p1 = MatrixMath.toPoint2D(value1);
+							Point2D p2 = MatrixMath.toPoint2D(value2);
+							for (int i = 1; i < count; i++) {
+								double w = i / (double) count;
+								Point2D p = new Point2D(
+										p1.x + (p2.x - p1.x) * w,
+										p1.y + (p2.y - p1.y) * w);
+								String v = p.x + "," + p.y;
+								data.get(i - 1).manual.put(field.field(), v);
+							}
+						}
+						for (int i = 1; i < count; i++) {
+							int frame = i + start;
+							save(data.get(i - 1), frame);
+						}
+					} catch (Exception ex) {
+						ex.printStackTrace();
+						showMessage(SWT.ICON_ERROR, ex.getMessage());
+					}
+					break;
 				}
 				if (button != null) {
 					button.setSelection(!button.getSelection());
 					setData(button);
 				}
+			}
+
+			private EditMode getMode(final Event e) {
+				if ((e.stateMask & SWT.SHIFT) > 0) {
+					return EditMode.MODIFY;
+				}
+				return EditMode.ANNOTATE;
 			}
 		});
 
@@ -1011,6 +1117,23 @@ public class FaceSelector {
 		display.dispose();
 	}
 
+	private static Image[] getImages(String[] files) {
+		Image[] images = new Image[files.length];
+		for (int i = 0; i < files.length; i++) {
+			images[i] = getImage(files[i]);
+		}
+		return images;
+	}
+
+	private static Image getImage(String file) {
+		try {
+			return new Image(display, "res/" + file);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return null;
+	}
+
 	private static String readFile(File file) throws IOException {
 		FileInputStream stream = new FileInputStream(file);
 		try {
@@ -1710,19 +1833,25 @@ public class FaceSelector {
 	}
 
 	private static void save() {
-		if (curFile >= 0 && hadChange) {
+		if (hadChange) {
+			save(curData, curFile);
+		}
+	}
+
+	private static void save(AnnotationData data, int index) {
+		if (index >= 0) {
 			sigma = new LinkedList<Double>();
 			File file;
-			if (curData.manual.size() > 0) {
+			if (data.manual.size() > 0) {
 				try {
-					file = new File(files.get(curFile).getCanonicalPath()
+					file = new File(files.get(index).getCanonicalPath()
 							+ ".txt");
 					file.createNewFile();
 					if (file.exists()) {
 						final BufferedWriter bufferedWriter = new BufferedWriter(
 								new FileWriter(file));
 						int count = 0;
-						for (final Entry<String, String> set : curData.manual
+						for (final Entry<String, String> set : data.manual
 								.entrySet()) {
 							bufferedWriter.write(set.getKey() + "="
 									+ set.getValue() + "\n");
@@ -1731,7 +1860,7 @@ public class FaceSelector {
 						bufferedWriter.close();
 						if (DEBUG) {
 							System.out.println("Stored " + count
-									+ " fields for image #" + (curFile + 1));
+									+ " fields for image #" + (index + 1));
 						}
 					} else {
 						throw new RuntimeException("Failed to save data:\n\t"

@@ -62,20 +62,14 @@ public class Face {
 			if (this.width == 0) {
 				this.width = this.height / GOLDEN_RATIO;
 			}
-			System.out.println("rotation");
-			System.out.println(p3);
-			System.out.println(p4);
 			final Point2D pA = new Point2D(0.0, -1.0);
 			final Point2D pB = MatrixMath.norm(new Point2D(p3.x - p4.x, p3.y
 					- p4.y));
-			System.out.println(pB);
-			System.out.println(MatrixMath.dot(pA, pB));
 			final double radians = Math.acos(MatrixMath.dot(pA, pB));
 			rotation = radians * MatrixMath.RADIANS_TO_DEGREES;
 			if (pB.x < 0) {
 				rotation *= -1;
 			}
-			System.out.println(this.rotation);
 			if (absolute) {
 				rotation = Math.abs(this.rotation);
 			}
